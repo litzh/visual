@@ -23,10 +23,12 @@ jobs:
       - name: Install OpenSCAD
         run: |
           sudo apt-get update
-          sudo apt-get install -y openscad
+          sudo apt-get install -y openscad xvfb
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: false
 
       # openscad 的 CGAL 渲染结果磁盘缓存，scad 文件不变时直接命中
       - name: Cache OpenSCAD render cache

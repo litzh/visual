@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["trimesh"]
+# dependencies = ["trimesh", "scipy"]
 # ///
 """SCAD -> GLB 模型 + PNG 缩略图
 
@@ -12,6 +12,7 @@
 """
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -27,6 +28,16 @@ COLORSCHEME = "DeepOcean"
 def run(cmd: list[str]) -> None:
     print("+", " ".join(str(c) for c in cmd))
     subprocess.run(cmd, check=True)
+
+
+def render_png(scad: Path, png: Path) -> None:
+    """openscad PNG 渲染需要 OpenGL，headless Linux 下用 xvfb 虚拟显示"""
+    cmd = ["openscad", "-o", str(png), f"--imgsize={IMGSIZE}",
+           "--viewall", "--autocenter", f"--colorscheme={COLORSCHEME}", str(scad)]
+    if (sys.platform.startswith("linux") and not os.environ.get("DISPLAY")
+            and shutil.which("xvfb-run")):
+        cmd = ["xvfb-run", "-a"] + cmd
+    run(cmd)
 
 
 def newer(path: Path, ref: Path) -> bool:
@@ -76,9 +87,7 @@ def main() -> None:
             print(f"  GLB: {glb.stat().st_size / 1024:.0f} KiB, "
                   f"{len(mesh.vertices)} vertices / {len(mesh.faces)} faces")
 
-            run(["openscad", "-o", str(png), f"--imgsize={IMGSIZE}",
-                 "--viewall", "--autocenter", f"--colorscheme={COLORSCHEME}",
-                 str(scad)])
+            render_png(scad, png)
 
     print(f"\n完成！模型目录: {models_dir}")
     print("接着运行 uv run tools/build_index.py 生成站点页面")
