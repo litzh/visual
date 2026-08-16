@@ -95,6 +95,19 @@ html:
     harness: "pi"
     preset: "anchored-standard"
     date: 2026-08-16
+  - file: wang-tiles.html
+    title: 图灵机王氏砖模拟器
+    prompt:
+      - "测试一下，回复ok"
+      - "创建一个单文件HTML，实现一个图灵机可视化模拟，用户通过表格输入状态转移表。直接开发"
+      - "基于当前文件，创建一个新文件，实现图灵机到wang瓷砖的转换功能，直接开发"
+      - "之前的图灵机模拟本身的功能也保留在这个页面上，就在转换结果上面显示"
+    model: "deepseek-v4-pro-0813"
+    effort: "max"
+    harness: "pi"
+    preset: "anchored-standard"
+    date: 2026-08-16
+    note: "全程没有联网"
 
 svg:
   - file: penrose_stairs.svg

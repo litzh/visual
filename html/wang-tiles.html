@@ -1,0 +1,1279 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>图灵机 → Wang 瓷砖转换器</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --panel: #1e293b;
+    --panel-2: #273449;
+    --border: #334155;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #38bdf8;
+    --accent-2: #818cf8;
+    --green: #34d399;
+    --red: #f87171;
+    --yellow: #fbbf24;
+    --tape-bg: #0b1120;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "SF Mono", "Menlo", "Consolas", "PingFang SC", "Microsoft YaHei", monospace;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px;
+  }
+  h1 {
+    font-size: 22px;
+    text-align: center;
+    margin-bottom: 4px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .subtitle { text-align: center; color: var(--muted); font-size: 12px; margin-bottom: 12px; }
+  .theorem {
+    max-width: 1100px;
+    margin: 0 auto 20px;
+    padding: 12px 18px;
+    background: rgba(129,140,248,.08);
+    border: 1px solid rgba(129,140,248,.35);
+    border-radius: 10px;
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.9;
+  }
+  .theorem b { color: var(--accent-2); }
+  .layout {
+    display: grid;
+    grid-template-columns: 420px 1fr;
+    gap: 20px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  @media (max-width: 1000px) { .layout { grid-template-columns: 1fr; } }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 20px;
+  }
+  .panel h2 {
+    font-size: 14px;
+    color: var(--accent);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .cfg-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .cfg-grid label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px; }
+  .cfg-grid input {
+    width: 100%;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+  }
+  .cfg-grid input:focus { border-color: var(--accent); }
+  .table-wrap { max-height: 260px; overflow-y: auto; border-radius: 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    background: var(--panel-2);
+    color: var(--muted);
+    font-weight: normal;
+    font-size: 11px;
+    padding: 6px;
+    position: sticky;
+    top: 0;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+  }
+  td { padding: 3px 4px; text-align: center; }
+  td input {
+    width: 100%;
+    background: var(--tape-bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 6px;
+    font-size: 13px;
+    font-family: inherit;
+    text-align: center;
+    outline: none;
+  }
+  td input:focus { border-color: var(--accent); }
+  .row-del {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--red);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 4px 8px;
+  }
+  .row-del:hover { background: rgba(248,113,113,.1); }
+  .btn-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  button {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button.primary { background: var(--accent); color: #062033; font-weight: bold; border: none; }
+  button.primary:hover { background: #7dd3fc; }
+  button.danger { border-color: rgba(248,113,113,.4); color: var(--red); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .hint { font-size: 11px; color: var(--muted); margin-top: 10px; line-height: 1.7; }
+
+  /* ---- 统计 ---- */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .stat-card {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    text-align: center;
+  }
+  .stat-card .v { font-size: 22px; font-weight: bold; color: var(--text); }
+  .stat-card .k { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .stat-card .v.t-green { color: var(--green); }
+  .stat-card .v.t-red { color: var(--red); }
+  .stat-card .v.t-yellow { color: var(--yellow); }
+  .stat-card .v.t-blue { color: var(--accent); }
+  .meta-line { font-size: 12px; color: var(--muted); line-height: 1.9; margin-bottom: 10px; }
+
+  /* ---- 铺砌预览 ---- */
+  .preview-controls {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  input[type=range] { accent-color: var(--accent); width: 110px; }
+  .status-banner {
+    display: none;
+    margin-bottom: 12px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 12px;
+    line-height: 1.7;
+  }
+  .status-banner.show { display: block; }
+  .status-banner.accept { background: rgba(52,211,153,.12); border: 1px solid var(--green); color: var(--green); }
+  .status-banner.reject { background: rgba(248,113,113,.12); border: 1px solid var(--red); color: var(--red); }
+  .status-banner.run { background: rgba(56,189,248,.10); border: 1px solid var(--accent); color: var(--accent); }
+  .preview-scroll { overflow: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--tape-bg); padding: 10px; }
+  .preview-grid {
+    display: grid;
+    width: max-content;
+    margin: 0 auto;
+    gap: 2px;
+  }
+  .pcell { position: relative; border-radius: 3px; background: #1a2537; }
+  .pcell .e { position: absolute; border-radius: 1px; }
+  .pcell .e-t { top: 0; left: 0; right: 0; height: 5px; }
+  .pcell .e-b { bottom: 0; left: 0; right: 0; height: 5px; }
+  .pcell .e-l { left: 0; top: 0; bottom: 0; width: 5px; }
+  .pcell .e-r { right: 0; top: 0; bottom: 0; width: 5px; }
+  .pcell .ctr {
+    position: absolute;
+    inset: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: bold;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .pcell.gap {
+    background: rgba(248,113,113,.12);
+    border: 1px dashed var(--red);
+    color: var(--red);
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .pcell.sea { opacity: .45; }
+  .pcell.row0 { box-shadow: inset 0 0 0 1px rgba(56,189,248,.5); }
+  .glabel {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: var(--muted);
+    user-select: none;
+  }
+  .glabel.t0 { color: var(--accent); font-weight: bold; }
+  .glabel.sea { color: #475569; }
+  .check-line { margin-top: 10px; font-size: 12px; }
+  .check-line.ok { color: var(--green); }
+  .check-line.bad { color: var(--red); }
+
+  /* ---- 瓷砖画廊 ---- */
+  .gallery {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    max-height: 320px;
+    overflow-y: auto;
+    padding: 4px;
+  }
+  .gtile { position: relative; width: 62px; height: 62px; background: #1a2537; border-radius: 4px; flex: 0 0 auto; }
+  .gtile .e { position: absolute; }
+  .gtile .e-t { top: 0; left: 0; right: 0; height: 7px; }
+  .gtile .e-b { bottom: 0; left: 0; right: 0; height: 7px; }
+  .gtile .e-l { left: 0; top: 0; bottom: 0; width: 7px; }
+  .gtile .e-r { right: 0; top: 0; bottom: 0; width: 7px; }
+  .gtile .ctr {
+    position: absolute; inset: 9px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: bold;
+  }
+  .gtile .tag {
+    position: absolute; top: -7px; right: -5px;
+    font-size: 9px; padding: 1px 4px; border-radius: 6px;
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
+  }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11px; color: var(--muted); }
+  .legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+  .filter-row { display: flex; gap: 6px; margin-bottom: 10px; }
+  .filter-row button.active { border-color: var(--accent); color: var(--accent); background: rgba(56,189,248,.1); }
+
+  /* ---- 图灵机模拟器 ---- */
+  .sim-top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .state-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 13px;
+  }
+  .state-pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .state-pill .dot.running { background: var(--green); animation: pulse 1s infinite; }
+  .state-pill .dot.accept { background: var(--green); }
+  .state-pill .dot.reject { background: var(--red); }
+  @keyframes pulse { 50% { opacity: .3; } }
+  .stat { color: var(--muted); font-size: 12px; }
+  .tape-viewport {
+    position: relative;
+    background: var(--tape-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 46px 0 16px;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .tape { display: flex; width: max-content; margin: 0 auto; min-width: 100%; }
+  .cell {
+    flex: 0 0 auto;
+    width: 56px;
+    text-align: center;
+    border-right: 1px dashed rgba(148,163,184,.25);
+    position: relative;
+    padding-bottom: 6px;
+  }
+  .cell:first-child { border-left: 1px dashed rgba(148,163,184,.25); }
+  .cell .idx { display: block; font-size: 10px; color: var(--muted); margin-bottom: 8px; user-select: none; }
+  .cell .sym {
+    display: inline-block;
+    min-width: 30px;
+    padding: 6px 4px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: bold;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+  }
+  .cell.head { background: rgba(251,191,36,.07); }
+  .cell.head .sym {
+    border-color: var(--yellow);
+    box-shadow: 0 0 12px rgba(251,191,36,.45);
+    color: var(--yellow);
+  }
+  .cell.head .idx { color: var(--yellow); font-weight: bold; }
+  .cell.visited .sym { border-color: rgba(56,189,248,.35); }
+  .cell .marker {
+    position: absolute;
+    top: -34px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0; height: 0;
+    border-left: 10px solid transparent;
+    border-right: 10px solid transparent;
+    border-top: 12px solid transparent;
+    display: none;
+  }
+  .cell.head .marker { display: block; border-top-color: var(--yellow); }
+  .controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 14px;
+  }
+  .speed-wrap { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); margin-left: auto; }
+</style>
+</head>
+<body>
+  <h1>图灵机 → Wang 瓷砖转换器</h1>
+  <div class="subtitle">Turing Machine → Wang Tile Set — 停机 ⟺ 不可铺满平面（Berger, 1966）</div>
+  <div class="theorem">
+    <b>构造思想</b>：铺砌的每一行对应图灵机一个时刻的配置，时间自上而下推进。读写头位置以「状态-符号」复合色
+    <b>h:q:a</b> 在上下边传递，磁带符号以 <b>s:σ</b> 在左右边传递；转移 δ(q,a)=(q′,b,方向) 由「执行瓷砖」落地，
+    「接收瓷砖」把新状态送达相邻格。<b>若 M 对 w 停机</b>，历史在有限行终止，上方无法继续铺砌 → 瓷砖集<b>不能铺满平面</b>；
+    <b>若 M 不停机</b>，历史无限延伸 → 瓷砖集<b>可铺满平面</b>。于是「能否铺满平面」（多米诺问题）不可判定。
+  </div>
+
+  <div class="layout">
+    <!-- 左侧：图灵机定义 -->
+    <div class="panel">
+      <h2>图灵机定义</h2>
+      <div class="cfg-grid">
+        <div>
+          <label>初始磁带（空格分词，_ 为空白）</label>
+          <input id="tape-input" value="1 0 1 1">
+        </div>
+        <div>
+          <label>初始状态</label>
+          <input id="init-state" value="q0">
+        </div>
+        <div>
+          <label>接受状态（逗号分隔，可空）</label>
+          <input id="accept-states" value="qacc">
+        </div>
+        <div>
+          <label>拒绝状态（逗号分隔，可空）</label>
+          <input id="reject-states" value="">
+        </div>
+      </div>
+
+      <h2>状态转移表
+        <span style="font-size:11px;color:var(--muted);font-weight:normal">读 a 写 b，移动，转新状态</span>
+      </h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th style="width:14%">当前状态</th><th style="width:14%">读取符号</th><th style="width:14%">写入符号</th><th style="width:14%">方向</th><th style="width:20%">新状态</th><th></th></tr>
+          </thead>
+          <tbody id="rule-body"></tbody>
+        </table>
+      </div>
+      <div class="btn-row">
+        <button id="add-rule">＋ 添加规则</button>
+        <button id="clear-rules" class="danger">清空规则</button>
+        <button id="load-example1">示例：二进制加 1</button>
+        <button id="load-example2">示例：回文检测</button>
+        <button id="load-example3">示例：左移演示</button>
+        <button id="load-example4">示例：无限循环</button>
+      </div>
+      <div class="btn-row" style="margin-top:14px">
+        <button id="btn-generate" class="primary" style="flex:1;padding:12px;font-size:14px">⟳ 生成 Wang 瓷砖集 + 铺砌预览</button>
+      </div>
+      <div class="hint">
+        · <b>读取符号</b> 可用 <b>*</b> 表示任意符号；同一状态下精确匹配优先于 *。<br>
+        · <b>写入符号</b> 填 <b>*</b> 表示保持原符号不变。<br>
+        · 方向：L = 左移，R = 右移，N = 停留。空白符号用 <b>_</b> 表示。<br>
+        · 进入接受/拒绝状态即停机：历史行终止 → 铺砌无法向上延伸。<br>
+        · 转换时 <b>*</b> 规则会按字母表展开为具体符号规则。
+      </div>
+    </div>
+
+    <!-- 右侧：模拟 + 转换结果 -->
+    <div>
+      <div class="panel">
+        <h2>图灵机模拟
+          <span style="font-size:11px;color:var(--muted);font-weight:normal">与铺砌预览联动：每单步一行，铺砌同步生长</span>
+        </h2>
+        <div class="sim-top">
+          <span class="state-pill"><span class="dot" id="status-dot"></span>状态：<b id="cur-state">-</b></span>
+          <span class="state-pill">读写头：<b id="cur-pos">-</b></span>
+          <span class="state-pill">读入：<b id="cur-symbol">-</b></span>
+          <span class="stat">步数 <b id="step-count" style="color:var(--text)">0</b></span>
+        </div>
+        <div class="tape-viewport" id="tape-viewport">
+          <div class="tape" id="tape"></div>
+        </div>
+        <div class="controls">
+          <button id="btn-reset">⟲ 重置</button>
+          <button id="btn-step">单步 ▸</button>
+          <button id="btn-run" class="primary">▶ 运行</button>
+          <button id="btn-skip">⏩ 快进 100 步</button>
+          <div class="speed-wrap">
+            速度
+            <input type="range" id="speed" min="1" max="20" value="8">
+            <span id="speed-label">80 步/秒</span>
+          </div>
+        </div>
+        <div class="status-banner" id="sim-banner"></div>
+      </div>
+
+      <div class="panel">
+        <h2>转换结果
+          <span style="font-size:11px;color:var(--muted);font-weight:normal" id="gen-time"></span>
+        </h2>
+        <div class="stats-grid" id="stats"></div>
+        <div class="meta-line" id="meta"></div>
+        <div class="btn-row">
+          <button id="btn-export">⭳ 导出 JSON</button>
+          <button id="btn-copy">⧉ 复制 JSON</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>铺砌预览（计算历史即铺砌）
+          <span style="font-size:11px;color:var(--muted);font-weight:normal">时间向下，t&lt;0 为空白海</span>
+        </h2>
+        <div class="preview-controls">
+          最大步数 <input type="range" id="pv-steps" min="5" max="50" value="20"> <span id="pv-steps-label">20</span>
+          格子大小 <input type="range" id="pv-cell" min="26" max="60" value="36"> <span id="pv-cell-label">36px</span>
+        </div>
+        <div class="status-banner" id="pv-banner"></div>
+        <div class="preview-scroll" id="pv-scroll"><div class="preview-grid" id="pv-grid"></div></div>
+        <div class="check-line" id="pv-check"></div>
+      </div>
+
+      <div class="panel">
+        <h2>瓷砖集（<span id="gal-count">0</span> 块）
+          <span style="font-size:11px;color:var(--muted);font-weight:normal">悬停查看四边标签</span>
+        </h2>
+        <div class="filter-row">
+          <button class="gal-filter active" data-f="all">全部</button>
+          <button class="gal-filter" data-f="prop">传播</button>
+          <button class="gal-filter" data-f="exec">执行</button>
+          <button class="gal-filter" data-f="recv">接收</button>
+          <button class="gal-filter" data-f="init">初始</button>
+        </div>
+        <div class="gallery" id="gallery"></div>
+        <div class="legend" id="legend" style="margin-top:12px"></div>
+      </div>
+    </div>
+  </div>
+
+<script id="core">
+/* ================= 核心算法（无 DOM 依赖）=================
+ * 图灵机 M 与输入 w → Wang 瓷砖集 T。
+ * 约定：铺砌时间向下。格子 (i,t) 的
+ *   上边 = 与 (i,t-1) 共享、底边 = 与 (i,t+1) 共享，
+ *   左边 = 与 (i-1,t) 共享、右边 = 与 (i+1,t) 共享。
+ * 边标签：s:σ = 符号 σ；h:q:σ = 状态 q 且读符号 σ（读写头）。
+ * 瓷砖类型：prop 传播 / exec 执行 / recv 接收 / init 初始。
+ * 定理：M 对 w 不停机 ⟺ T 可铺满平面。*/
+var TMW = (function () {
+  "use strict";
+  var BLANK = "_";
+  function S(s) { return "s:" + s; }
+  function H(q, s) { return "h:" + q + ":" + s; }
+  function key(t, b, l, r) { return [t, b, l, r].join("\u00A6"); }
+
+  /* 展开 * 通配符规则：read=* → 该状态下无精确规则的所有 σ∈Γ；write=* → 保持读到的符号。
+   * 语义与模拟器一致：同一状态下精确匹配优先于 *。 */
+  function expandRules(rules, gamma) {
+    var exact = new Map(); // from -> Set(read)
+    rules.forEach(function (r) {
+      if (r.read !== "*") {
+        if (!exact.has(r.from)) exact.set(r.from, new Set());
+        exact.get(r.from).add(r.read);
+      }
+    });
+    var out = [];
+    rules.forEach(function (r) {
+      if (r.read === "*") {
+        var skips = exact.get(r.from) || new Set();
+        gamma.forEach(function (a) {
+          if (!skips.has(a)) {
+            out.push({ from: r.from, read: a, write: r.write === "*" ? a : r.write, dir: r.dir, to: r.to });
+          }
+        });
+      } else {
+        out.push({ from: r.from, read: r.read, write: r.write === "*" ? r.read : r.write, dir: r.dir, to: r.to });
+      }
+    });
+    return out;
+  }
+
+  /* 从定义收集机器：字母表、状态集、展开后的规则 */
+  function collectMachine(def) {
+    var gamma = new Set([BLANK]);
+    (def.tape || []).forEach(function (s) { gamma.add(s); });
+    (def.rules || []).forEach(function (r) {
+      if (r.read !== "*") gamma.add(r.read);
+      if (r.write !== "*") gamma.add(r.write);
+    });
+    var g = Array.from(gamma);
+    var rules = expandRules(def.rules || [], g);
+    var states = new Set([def.q0]);
+    rules.forEach(function (r) { states.add(r.from); states.add(r.to); });
+    (def.accept || []).forEach(function (s) { states.add(s); });
+    (def.reject || []).forEach(function (s) { states.add(s); });
+    return {
+      q0: def.q0 || "q0",
+      tape: (def.tape || []).slice(),
+      accept: new Set(def.accept || []),
+      reject: new Set(def.reject || []),
+      gamma: g,
+      states: Array.from(states),
+      rules: rules
+    };
+  }
+
+  /* ============ 生成瓷砖集 ============
+   * 约定：时间向下增长。格子 (i,t)：
+   *   上边与 (i,t-1) 共享（来自过去），底边与 (i,t+1) 共享（通往未来），
+   *   左边与 (i-1,t) 共享，右边与 (i+1,t) 共享。
+   * 行内符号经左右边传递；读写头「状态-读符号」经执行格上边进入、
+   * 经执行格/接收格底边传出（移动时由接收格跨列传给下一行执行格）。*/
+  function buildTiles(m) {
+    var T = new Map();
+    function add(top, bottom, left, right, type, note) {
+      var k = key(top, bottom, left, right);
+      if (!T.has(k)) T.set(k, { top: top, bottom: bottom, left: left, right: right, type: type, note: note, key: k });
+    }
+    var G = m.gamma;
+
+    /* 1) 传播瓷砖：P[c,σ]：上 σ 底 σ 左 c(左邻符号) 右 σ。
+     *    行内符号经左右边传递：格 (i,t) 左 = σ_{i-1}、右 = σ_i，故需左邻变体。 */
+    G.forEach(function (s) { G.forEach(function (c) {
+      add(S(s), S(s), S(c), S(s), "prop", "传播符号 " + s + "（左邻 " + c + "）");
+    }); });
+
+    /* 2) 执行瓷砖 + 接收瓷砖（对每个转移） */
+    m.rules.forEach(function (r) {
+      var q = r.from, a = r.read, b = r.write, q2 = r.to;
+      if (r.dir === "R") {
+        /* 执行格 (h,t)：上 h:q:a（接收读写头）底 s:b（写入）左 s:c(左邻) 右 s:a */
+        G.forEach(function (c) { add(H(q, a), S(b), S(c), S(a), "exec", "执行 \u03B4(" + q + "," + a + ")=(" + q2 + "," + b + ",R)，左邻 " + c); });
+        /* 接收格 (h+1,t)：上 s:\u03C3 底 h:q2:\u03C3（状态交予下一行）左 s:a 右 s:\u03C3 */
+        G.forEach(function (s) { add(S(s), H(q2, s), S(a), S(s), "recv", "接收 " + q2 + " 右移就位，读 " + s); });
+      } else if (r.dir === "L") {
+        /* 执行格 (h,t)：上 h:q:a 底 s:b 左 s:a 右 s:a（左邻是接收格、右邻传播格） */
+        G.forEach(function (c) { add(H(q, a), S(b), S(a), S(a), "exec", "执行 \u03B4(" + q + "," + a + ")=(" + q2 + "," + b + ",L)，左邻读 " + c); });
+        /* 接收格 (h-1,t)：上 s:\u03C3 底 h:q2:\u03C3 左 s:c(左邻) 右 s:a */
+        G.forEach(function (s) { G.forEach(function (c) {
+          add(S(s), H(q2, s), S(c), S(a), "recv", "接收 " + q2 + " 左移就位，读 " + s + "，左邻 " + c);
+        }); });
+      } else {
+        /* 停留：执行格上边接收读写头，底边直接 h:q2:b（下一行同格续读） */
+        G.forEach(function (c) { add(H(q, a), H(q2, b), S(c), S(a), "exec", "执行 \u03B4(" + q + "," + a + ")=(" + q2 + "," + b + ",N)，左邻 " + c); });
+      }
+    });
+
+    /* 3) 初始瓷砖：t=0 行，顶边必须 s:_（接上方空白海） */
+    function symAt(i) { return (i >= 0 && i < m.tape.length) ? m.tape[i] : BLANK; }
+    var a0 = symAt(0);
+    var pairs = new Set([BLANK + "\u00A6" + BLANK]);
+    for (var i = 0; i <= m.tape.length; i++) pairs.add(symAt(i - 1) + "\u00A6" + symAt(i));
+    pairs.forEach(function (p) {
+      var cs = p.split("\u00A6");
+      add(S(BLANK), S(cs[1]), S(cs[0]), S(cs[1]), "init", "初始符号 " + cs[1] + "（左邻 " + cs[0] + "）");
+    });
+    m.rules.filter(function (r) { return r.from === m.q0 && r.read === a0; }).forEach(function (r) {
+      var b = r.write, q2 = r.to;
+      if (r.dir === "R") {
+        add(S(BLANK), S(b), S(BLANK), S(a0), "exec", "初始执行 \u03B4(" + m.q0 + "," + a0 + ")=(" + q2 + "," + b + ",R)");
+        var s1 = symAt(1);
+        add(S(BLANK), H(q2, s1), S(a0), S(s1), "recv", "初始接收 " + q2 + "@1，读 " + s1);
+      } else if (r.dir === "L") {
+        add(S(BLANK), S(b), S(a0), S(a0), "exec", "初始执行 \u03B4(" + m.q0 + "," + a0 + ")=(" + q2 + "," + b + ",L)");
+        add(S(BLANK), H(q2, BLANK), S(BLANK), S(a0), "recv", "初始接收 " + q2 + "@-1，读 " + BLANK);
+      } else {
+        add(S(BLANK), H(q2, b), S(BLANK), S(a0), "exec", "初始执行 \u03B4(" + m.q0 + "," + a0 + ")=(" + q2 + "," + b + ",N)");
+      }
+    });
+    return Array.from(T.values());
+  }
+
+  /* ============ 模拟 M 对 w 运行（用于铺砌预览） ============ */
+  function simulate(m, maxSteps) {
+    maxSteps = maxSteps || 1e9;
+    var tape = new Map();
+    m.tape.forEach(function (s, i) { tape.set(i, s); });
+    var pos = 0, state = m.q0;
+    var steps = [], snapshots = [new Map(tape)];
+    while (steps.length < maxSteps) {
+      var a = tape.has(pos) ? tape.get(pos) : BLANK;
+      var rule = m.rules.find(function (r) { return r.from === state && r.read === a; }) ||
+                  m.rules.find(function (r) { return r.from === state && r.read === "*"; });
+      steps.push({ pos: pos, state: state, symbol: a, rule: rule || null });
+      if (!rule) {
+        return { steps: steps, snapshots: snapshots, halted: true, haltReason: "no-rule",
+                 finalPos: pos, finalState: state, finalSymbol: a, tape: tape };
+      }
+      tape.set(pos, rule.write);
+      pos += rule.dir === "R" ? 1 : rule.dir === "L" ? -1 : 0;
+      state = rule.to;
+      snapshots.push(new Map(tape));
+      if (m.accept.has(state)) {
+        return { steps: steps, snapshots: snapshots, halted: true, haltReason: "accept",
+                 finalPos: pos, finalState: state, finalSymbol: tape.has(pos) ? tape.get(pos) : BLANK, tape: tape };
+      }
+      if (m.reject.has(state)) {
+        return { steps: steps, snapshots: snapshots, halted: true, haltReason: "reject",
+                 finalPos: pos, finalState: state, finalSymbol: tape.has(pos) ? tape.get(pos) : BLANK, tape: tape };
+      }
+    }
+    return { steps: steps, snapshots: snapshots, halted: false, haltReason: null,
+             finalPos: pos, finalState: state, finalSymbol: tape.has(pos) ? tape.get(pos) : BLANK, tape: tape };
+  }
+
+  /* ============ 铺砌查询：格子 (i,t) 应放哪块瓷砖（无则 null = 缺口） ============ */
+  function tileFor(m, tileMap, sim, t, i) {
+    function g(map, idx) { return map.has(idx) ? map.get(idx) : BLANK; }
+    function find(top, bottom, left, right) {
+      return tileMap.get(key(top, bottom, left, right)) || null;
+    }
+    if (t < 0) return find(S(BLANK), S(BLANK), S(BLANK), S(BLANK)); // 空白海
+    var snap = sim.snapshots[t];
+    if (t === 0) {
+      var s0 = sim.steps[0];
+      /* 初始执行格：顶 s:_ 接空白海 */
+      if (s0.rule && i === s0.pos) {
+        var r0 = s0.rule;
+        if (r0.dir === "R") return find(S(BLANK), S(r0.write), S(BLANK), S(r0.read));
+        if (r0.dir === "L") return find(S(BLANK), S(r0.write), S(r0.read), S(r0.read));
+        return find(S(BLANK), H(r0.to, r0.write), S(BLANK), S(r0.read));
+      }
+      /* 初始接收格 */
+      if (s0.rule && (s0.rule.dir === "R" || s0.rule.dir === "L") &&
+          i === s0.pos + (s0.rule.dir === "R" ? 1 : -1)) {
+        var rr = s0.rule, sg = g(snap, i);
+        if (rr.dir === "R") return find(S(BLANK), H(rr.to, sg), S(rr.read), S(sg));
+        return find(S(BLANK), H(rr.to, sg), S(g(snap, i - 1)), S(rr.read));
+      }
+      /* 初始传播格 */
+      var si = g(snap, i);
+      return find(S(BLANK), S(si), S(g(snap, i - 1)), S(si));
+    }
+    var s = sim.steps[t];
+    /* 执行格 */
+    if (s && i === s.pos) {
+      if (!s.rule) return null; // 无规则停机：缺口
+      var r = s.rule;
+      if (r.dir === "R") return find(H(s.state, r.read), S(r.write), S(g(snap, i - 1)), S(r.read));
+      if (r.dir === "L") return find(H(s.state, r.read), S(r.write), S(r.read), S(r.read));
+      return find(H(s.state, r.read), H(r.to, r.write), S(g(snap, i - 1)), S(r.read));
+    }
+    /* 接收格 */
+    if (s && s.rule && (s.rule.dir === "R" || s.rule.dir === "L") &&
+        i === s.pos + (s.rule.dir === "R" ? 1 : -1)) {
+      var r2 = s.rule, sg2 = g(snap, i);
+      if (r2.dir === "R") return find(S(sg2), H(r2.to, sg2), S(r2.read), S(sg2));
+      return find(S(sg2), H(r2.to, sg2), S(g(snap, i - 1)), S(r2.read));
+    }
+    /* 传播格：左 = 左邻符号，右 = 自己符号 */
+    var s2 = g(snap, i);
+    return find(S(s2), S(s2), S(g(snap, i - 1)), S(s2));
+  }
+
+  return {
+    BLANK: BLANK, S: S, H: H, key: key,
+    expandRules: expandRules,
+    collectMachine: collectMachine,
+    buildTiles: buildTiles,
+    simulate: simulate,
+    tileFor: tileFor
+  };
+})();
+</script>
+
+<script>
+/* ================= UI 层 ================= */
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+
+  var currentM = null, currentTiles = null, currentSim = null, currentMap = null;
+  var galFilter = "all";
+
+  /* ---------- 规则表 ---------- */
+  function addRuleRow(rule) {
+    rule = rule || ["", "", "", "R", "", ""];
+    var tr = document.createElement("tr");
+    var fields = [["from", rule[0]], ["read", rule[1]], ["write", rule[2]], ["dir", rule[3], "select"], ["to", rule[4]], ["comment", rule[5]]];
+    fields.forEach(function (f) {
+      var td = document.createElement("td");
+      if (f[2] === "select") {
+        var sel = document.createElement("select");
+        sel.style.cssText = "width:100%;background:var(--tape-bg);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px;font-size:13px;font-family:inherit;text-align:center;outline:none";
+        ["R", "L", "N"].forEach(function (d) {
+          var op = document.createElement("option");
+          op.value = d; op.textContent = d;
+          if (d === f[1]) op.selected = true;
+          sel.appendChild(op);
+        });
+        sel.className = "rule-dir";
+        td.appendChild(sel);
+      } else {
+        var inp = document.createElement("input");
+        inp.value = f[1] == null ? "" : f[1];
+        inp.className = "rule-" + f[0];
+        inp.placeholder = f[0] === "comment" ? "可选" : "";
+        td.appendChild(inp);
+      }
+      tr.appendChild(td);
+    });
+    var tdDel = document.createElement("td");
+    var del = document.createElement("button");
+    del.textContent = "\u2715";
+    del.className = "row-del";
+    del.title = "删除此规则";
+    del.addEventListener("click", function () { tr.remove(); });
+    tdDel.appendChild(del);
+    tr.appendChild(tdDel);
+    $("rule-body").appendChild(tr);
+  }
+
+  function collectRules() {
+    var rules = [];
+    $("rule-body").querySelectorAll("tr").forEach(function (tr) {
+      var from = tr.querySelector(".rule-from").value.trim();
+      var read = tr.querySelector(".rule-read").value.trim();
+      var write = tr.querySelector(".rule-write").value.trim();
+      var dir = tr.querySelector(".rule-dir").value;
+      var to = tr.querySelector(".rule-to").value.trim();
+      if (!from || !read || !write || !to) return;
+      rules.push({ from: from, read: read, write: write, dir: dir, to: to });
+    });
+    return rules;
+  }
+
+  function readMachineDef() {
+    return {
+      q0: $("init-state").value.trim() || "q0",
+      tape: $("tape-input").value.trim().split(/\s+/).filter(Boolean),
+      accept: ($("accept-states").value || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean),
+      reject: ($("reject-states").value || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean),
+      rules: collectRules()
+    };
+  }
+
+  /* ---------- 颜色 ---------- */
+  function hashStr(s) {
+    var h = 0;
+    for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+    return Math.abs(h);
+  }
+  function labelColor(label) {
+    if (label === "s:_") return "#475569";
+    var h = label.indexOf("s:") === 0 ? 185 + hashStr(label) % 75 : 8 + hashStr(label) % 55;
+    return "hsl(" + h + ", 70%, 50%)";
+  }
+  function dispSymbol(s) { return s === "_" ? "\u2423" : s; }
+
+  /* ---------- 生成 ---------- */
+  function generate() {
+    var t0 = performance.now();
+    defFingerprint = JSON.stringify(readMachineDef());
+    currentM = TMW.collectMachine(readMachineDef());
+    currentTiles = TMW.buildTiles(currentM);
+    currentMap = new Map(currentTiles.map(function (t) { return [t.key, t]; }));
+    currentSim = TMW.simulate(currentM, parseInt($("pv-steps").value, 10));
+    renderStats();
+    renderGallery();
+    renderLegend();
+    resetSim(); // 内部渲染磁带 + 预览
+    $("gen-time").textContent = "生成耗时 " + (performance.now() - t0).toFixed(1) + " ms";
+  }
+
+  /* ---------- 图灵机模拟器（与铺砌预览联动） ---------- */
+  var simTape = new Map(), simPos = 0, simState = null, simSteps = 0,
+      simHalted = false, simHaltReason = "", simVisited = new Set(),
+      simTimer = null, simHasRun = false, defFingerprint = "";
+
+  function readSimTape(i) { return simTape.has(i) ? simTape.get(i) : "_"; }
+
+  function resetSim() {
+    stopSimRun();
+    simTape = new Map();
+    currentM.tape.forEach(function (s, i) { simTape.set(i, s); });
+    simPos = 0;
+    simState = currentM.q0;
+    simSteps = 0;
+    simHalted = false;
+    simHaltReason = "";
+    simVisited = new Set([0]);
+    simHasRun = false;
+    $("sim-banner").className = "status-banner";
+    $("sim-banner").textContent = "";
+    renderTape();
+    renderPreview();
+  }
+
+  function stepSim() {
+    if (simHalted) return false;
+    var a = readSimTape(simPos);
+    var rule = currentM.rules.find(function (r) { return r.from === simState && r.read === a; });
+    if (!rule) { simHalted = true; simHaltReason = "no-rule"; return false; }
+    simTape.set(simPos, rule.write);
+    simPos += rule.dir === "R" ? 1 : rule.dir === "L" ? -1 : 0;
+    simState = rule.to;
+    simSteps++;
+    simVisited.add(simPos);
+    if (currentM.accept.has(simState)) { simHalted = true; simHaltReason = "accept"; }
+    else if (currentM.reject.has(simState)) { simHalted = true; simHaltReason = "reject"; }
+    return true;
+  }
+
+  function stopSimRun() {
+    if (simTimer) { clearInterval(simTimer); simTimer = null; }
+    $("btn-run").textContent = "\u25B6 运行";
+  }
+
+  function startSimRun() {
+    if (simHalted) return;
+    stopSimRun();
+    simHasRun = true;
+    $("btn-run").textContent = "\u23F8 暂停";
+    var delay = function () { return 1000 / (parseInt($("speed").value, 10) * 10); };
+    simTimer = setInterval(function () {
+      var moved = stepSim();
+      renderTape();
+      if (!moved || simHalted) {
+        stopSimRun();
+        renderPreview();
+        renderSimBanner();
+      }
+    }, delay());
+  }
+
+  /* 检查 UI 是否被修改（指纹不同则自动重新生成并重置模拟器） */
+  function ensureFresh() {
+    var fp = JSON.stringify(readMachineDef());
+    if (fp !== defFingerprint) generate();
+  }
+
+  function renderSimBanner() {
+    var b = $("sim-banner");
+    b.className = "status-banner";
+    if (!simHalted) {
+      if (simHasRun) { b.classList.add("show", "run"); b.textContent = "\u25B6 运行中：已执行 " + simSteps + " 步（铺砌预览随单步/暂停同步）"; }
+      return;
+    }
+    b.classList.add("show");
+    if (simHaltReason === "accept") {
+      b.classList.add("accept");
+      b.textContent = "\u2713 接受：第 " + simSteps + " 步进入接受状态 " + simState + " \u2192 铺砌无法继续向上延伸，瓷砖集不可铺满平面";
+    } else if (simHaltReason === "reject") {
+      b.classList.add("reject");
+      b.textContent = "\u2717 拒绝：第 " + simSteps + " 步进入拒绝状态 " + simState + " \u2192 铺砌中断，瓷砖集不可铺满平面";
+    } else {
+      b.classList.add("reject");
+      b.textContent = "\u2717 停机：状态 " + simState + " 读 " + dispSymbol(readSimTape(simPos)) +
+        " 无转移（第 " + simSteps + " 步）\u2192 读写头格无瓷砖，铺砌中断";
+    }
+  }
+
+  function renderTape() {
+    var pos = simPos;
+    var mn = pos, mx = pos;
+    simVisited.forEach(function (i) { if (i < mn) mn = i; if (i > mx) mx = i; });
+    simTape.forEach(function (v, k) { if (k < mn) mn = k; if (k > mx) mx = k; });
+    mn -= 6; mx += 6;
+    var tapeEl = $("tape");
+    tapeEl.innerHTML = "";
+    for (var i = mn; i <= mx; i++) {
+      var cell = document.createElement("div");
+      cell.className = "cell";
+      if (i === pos && !simHalted) cell.classList.add("head");
+      if (simVisited.has(i)) cell.classList.add("visited");
+      var idx = document.createElement("span");
+      idx.className = "idx";
+      idx.textContent = i;
+      var sym = document.createElement("span");
+      sym.className = "sym";
+      sym.textContent = dispSymbol(readSimTape(i));
+      var marker = document.createElement("div");
+      marker.className = "marker";
+      cell.appendChild(marker);
+      cell.appendChild(idx);
+      cell.appendChild(sym);
+      tapeEl.appendChild(cell);
+    }
+    var vp = $("tape-viewport");
+    requestAnimationFrame(function () {
+      var headEl = tapeEl.querySelector(".cell.head") || tapeEl.querySelector(".cell.visited");
+      if (headEl) {
+        var target = headEl.offsetLeft - vp.clientWidth / 2 + headEl.clientWidth / 2;
+        vp.scrollLeft = Math.max(0, target);
+      }
+    });
+    $("cur-state").textContent = simState;
+    $("cur-pos").textContent = simPos;
+    $("cur-symbol").textContent = dispSymbol(readSimTape(simPos));
+    $("step-count").textContent = simSteps;
+    var dot = $("status-dot");
+    dot.className = "dot";
+    if (simHalted) dot.classList.add(simHaltReason === "accept" ? "accept" : "reject");
+    else if (simTimer) dot.classList.add("running");
+    renderSimBanner();
+  }
+
+  /* 预览显示行数：未运行 = 滑块值；运行后 = 跟随已执行步数（不超过滑块） */
+  function previewRows() {
+    var slider = parseInt($("pv-steps").value, 10);
+    if (simHasRun) return Math.min(Math.max(simSteps, 1), slider);
+    return slider;
+  }
+
+  function renderStats() {
+    var cnt = { total: currentTiles.length, prop: 0, exec: 0, recv: 0, init: 0 };
+    currentTiles.forEach(function (t) { cnt[t.type]++; });
+    var halt = currentSim.halted;
+    var html = "";
+    html += '<div class="stat-card"><div class="v t-blue">' + cnt.total + '</div><div class="k">瓷砖总数</div></div>';
+    html += '<div class="stat-card"><div class="v">' + cnt.prop + '</div><div class="k">传播</div></div>';
+    html += '<div class="stat-card"><div class="v">' + cnt.exec + '</div><div class="k">执行</div></div>';
+    html += '<div class="stat-card"><div class="v">' + cnt.recv + '</div><div class="k">接收</div></div>';
+    html += '<div class="stat-card"><div class="v">' + cnt.init + '</div><div class="k">初始</div></div>';
+    html += '<div class="stat-card"><div class="v">' + currentM.gamma.length + '</div><div class="k">字母表 |\u0393|</div></div>';
+    html += '<div class="stat-card"><div class="v">' + currentM.states.length + '</div><div class="k">状态 |Q|</div></div>';
+    html += '<div class="stat-card"><div class="v ' + (halt ? "t-red" : "t-green") + '">' + (halt ? "停机" : "未停机") + '</div><div class="k">模拟 ' + currentSim.steps.length + ' 步</div></div>';
+    $("stats").innerHTML = html;
+    $("meta").innerHTML =
+      "\u0393 = {" + currentM.gamma.map(dispSymbol).join(", ") + "}　" +
+      "Q = {" + currentM.states.join(", ") + "}　" +
+      "展开后规则数 = " + currentM.rules.length + "　" +
+      "输入 w = [" + (currentM.tape.length ? currentM.tape.map(dispSymbol).join(" ") : "\u2205") + "]";
+  }
+
+  /* ---------- 铺砌预览 ---------- */
+  function renderPreview(maxRows) {
+    var sim = currentSim, m = currentM, map = currentMap;
+    var fullT = sim.steps.length - 1;
+    var rowsTo = maxRows != null ? maxRows : previewRows();
+    var T = Math.max(0, Math.min(rowsTo - 1, fullT));
+    var t0 = -2;
+    var cellW = parseInt($("pv-cell").value, 10);
+
+    /* 列范围 */
+    var mn = Infinity, mx = -Infinity;
+    for (var t = 0; t <= T; t++) {
+      sim.snapshots[t].forEach(function (v, k) { if (k < mn) mn = k; if (k > mx) mx = k; });
+    }
+    for (var s2 = 0; s2 <= T; s2++) {
+      if (sim.steps[s2].pos < mn) mn = sim.steps[s2].pos;
+      if (sim.steps[s2].pos > mx) mx = sim.steps[s2].pos;
+    }
+    mn -= 2; mx += 2;
+    var n = mx - mn + 1, rows = T - t0 + 1;
+
+    var grid = $("pv-grid");
+    grid.style.gridTemplateColumns = "34px repeat(" + n + ", " + cellW + "px)";
+    grid.style.gridTemplateRows = "20px repeat(" + rows + ", " + cellW + "px)";
+    grid.innerHTML = "";
+
+    /* 列头 */
+    var corner = document.createElement("div");
+    grid.appendChild(corner);
+    for (var i = mn; i <= mx; i++) {
+      var hd = document.createElement("div");
+      hd.className = "glabel";
+      hd.textContent = i;
+      grid.appendChild(hd);
+    }
+
+    /* 数据：t 行 i 列 → tile */
+    var placed = []; // {t, i, tile}
+    var gaps = 0;
+    for (var t2 = t0; t2 <= T; t2++) {
+      var lb = document.createElement("div");
+      lb.className = "glabel" + (t2 === 0 ? " t0" : t2 < 0 ? " sea" : "");
+      lb.textContent = t2 === 0 ? "0\u25B8" : t2;
+      grid.appendChild(lb);
+      for (var j = mn; j <= mx; j++) {
+        var tile = TMW.tileFor(m, map, sim, t2, j);
+        var cell = document.createElement("div");
+        cell.className = "pcell";
+        if (t2 < 0) cell.classList.add("sea");
+        if (t2 === 0) cell.classList.add("row0");
+        if (!tile) {
+          cell.classList.add("gap");
+          cell.textContent = "\u00D7";
+          cell.title = "无可用瓷砖：铺砌在此中断";
+          gaps++;
+        } else {
+          placed.push({ t: t2, i: j, tile: tile });
+          [["e-t", tile.top], ["e-b", tile.bottom], ["e-l", tile.left], ["e-r", tile.right]].forEach(function (p) {
+            var e = document.createElement("div");
+            e.className = "e " + p[0];
+            e.style.background = labelColor(p[1]);
+            cell.appendChild(e);
+          });
+          var ctr = document.createElement("div");
+          ctr.className = "ctr";
+          ctr.textContent = tile.type === "exec" ? "E" : tile.type === "recv" ? "\u25B8" :
+                            dispSymbol(tile.top.replace(/^s:/, ""));
+          ctr.style.color = tile.type === "exec" ? "#fbbf24" : tile.type === "recv" ? "#f472b6" : "#cbd5e1";
+          cell.appendChild(ctr);
+          cell.title = tile.note + "　上:" + tile.top + " 下:" + tile.bottom + " 左:" + tile.left + " 右:" + tile.right;
+        }
+        grid.appendChild(cell);
+      }
+    }
+
+    /* 一致性检查：所有相邻格共享边颜色一致 */
+    var idx = new Map(placed.map(function (p) { return [p.t + "," + p.i, p.tile]; }));
+    var conflicts = 0;
+    placed.forEach(function (p) {
+      var up = idx.get((p.t - 1) + "," + p.i);
+      if (up && up.bottom !== p.tile.top) conflicts++;
+      var down = idx.get((p.t + 1) + "," + p.i);
+      if (down && down.top !== p.tile.bottom) conflicts++;
+      var left = idx.get(p.t + "," + (p.i - 1));
+      if (left && left.right !== p.tile.left) conflicts++;
+      var right = idx.get(p.t + "," + (p.i + 1));
+      if (right && right.left !== p.tile.right) conflicts++;
+    });
+
+    var checkEl = $("pv-check");
+    if (conflicts === 0 && gaps === 0) {
+      checkEl.className = "check-line ok";
+      checkEl.textContent = "\u2713 铺砌一致性校验通过：" + placed.length + " 块瓷砖，所有共享边颜色匹配，无缺口";
+    } else {
+      checkEl.className = "check-line bad";
+      checkEl.textContent = "\u2717 冲突边 " + conflicts + " 处" + (gaps ? "，缺口 " + gaps + " 处（停机/无规则导致铺砌中断）" : "");
+    }
+
+    /* 停机/截断横幅 */
+    var banner = $("pv-banner");
+    banner.className = "status-banner show";
+    if (T < fullT) {
+      banner.classList.add("run");
+      banner.textContent = "\u23F3 当前显示前 " + (T + 1) + " 行（t \u2264 " + T + "）。在模拟器中单步/运行可让铺砌逐行生长，" +
+        "或调大「最大步数」查看完整历史。";
+    } else if (sim.halted) {
+      if (sim.haltReason === "accept") {
+        banner.classList.add("accept");
+        banner.textContent = "\u2713 第 " + T + " 步进入接受状态 " + sim.finalState + "：计算历史在 " + (T + 1) + " 行终止。" +
+          "第 " + (T + 1) + " 行读写头格需要底边 h:" + sim.finalState + ":\u00B7 的瓷砖，集合中不存在 \u2192 铺砌无法向上延伸，" +
+          "该瓷砖集【不可铺满平面】。";
+      } else if (sim.haltReason === "reject") {
+        banner.classList.add("reject");
+        banner.textContent = "\u2717 第 " + T + " 步进入拒绝状态 " + sim.finalState + "：历史终止，上方无法继续铺砌 \u2192 " +
+          "该瓷砖集【不可铺满平面】。";
+      } else {
+        banner.classList.add("reject");
+        banner.textContent = "\u2717 第 " + T + " 步状态 " + sim.finalState + " 读 " + dispSymbol(sim.finalSymbol) +
+          " 无转移：第 " + T + " 行读写头格无瓷砖（缺口）\u2192 铺砌中断，【不可铺满平面】。";
+      }
+    } else {
+      banner.classList.add("run");
+      var extra = (simHasRun && simSteps > sim.steps.length)
+        ? "（模拟器已运行 " + simSteps + " 步，预览受「最大步数」限制，可调大查看）" : "";
+      banner.textContent = "\u23F3 已模拟 " + sim.steps.length + " 步仍未停机（显示截断）。若该机器永不停止，计算历史可无限延伸 \u2192 " +
+        "瓷砖集【可铺满平面】。" + extra;
+    }
+  }
+
+  /* ---------- 瓷砖画廊 ---------- */
+  function tileTag(t) { return { prop: "P", exec: "E", recv: "R", init: "I" }[t]; }
+  function renderGallery() {
+    var box = $("gallery");
+    box.innerHTML = "";
+    var list = currentTiles.filter(function (t) { return galFilter === "all" || t.type === galFilter; });
+    $("gal-count").textContent = currentTiles.length;
+    list.forEach(function (t) {
+      var d = document.createElement("div");
+      d.className = "gtile";
+      [["e-t", t.top], ["e-b", t.bottom], ["e-l", t.left], ["e-r", t.right]].forEach(function (p) {
+        var e = document.createElement("div");
+        e.className = "e " + p[0];
+        e.style.background = labelColor(p[1]);
+        d.appendChild(e);
+      });
+      var ctr = document.createElement("div");
+      ctr.className = "ctr";
+      ctr.textContent = t.type === "exec" ? "\u03B4" : t.type === "recv" ? "\u25B8" : dispSymbol(t.top.replace(/^s:/, ""));
+      ctr.style.color = t.type === "exec" ? "#fbbf24" : t.type === "recv" ? "#f472b6" : "#cbd5e1";
+      d.appendChild(ctr);
+      var tag = document.createElement("div");
+      tag.className = "tag";
+      tag.textContent = tileTag(t.type);
+      d.appendChild(tag);
+      d.title = t.note + "　上:" + t.top + " 下:" + t.bottom + " 左:" + t.left + " 右:" + t.right;
+      box.appendChild(d);
+    });
+  }
+
+  function renderLegend() {
+    var labels = new Set();
+    currentTiles.forEach(function (t) { labels.add(t.top); labels.add(t.bottom); labels.add(t.left); labels.add(t.right); });
+    var arr = Array.from(labels).sort(function (a, b) {
+      var as = a.indexOf("s:") === 0 ? 0 : 1, bs = b.indexOf("s:") === 0 ? 0 : 1;
+      return as - bs || a.localeCompare(b);
+    });
+    $("legend").innerHTML = "边颜色图例：" + arr.map(function (l) {
+      return '<span><span class="sw" style="background:' + labelColor(l) + '"></span>' +
+        l.replace(/^s:/, "s:").replace("s:_", "s:\u2423") + "</span>";
+    }).join("　");
+  }
+
+  /* ---------- 导出 ---------- */
+  function exportData() {
+    return JSON.stringify({
+      machine: {
+        q0: currentM.q0, tape: currentM.tape, accept: Array.from(currentM.accept),
+        reject: Array.from(currentM.reject), gamma: currentM.gamma, states: currentM.states, rules: currentM.rules
+      },
+      theorem: "M \u5BF9 w \u4E0D\u505C\u673A \u27FA \u74F7\u7816\u96C6\u53EF\u94FA\u6EE1\u5E73\u9762 (Berger 1966)",
+      tileCount: currentTiles.length,
+      tiles: currentTiles.map(function (t) { return { top: t.top, bottom: t.bottom, left: t.left, right: t.right, type: t.type, note: t.note }; })
+    }, null, 2);
+  }
+  $("btn-export").addEventListener("click", function () {
+    if (!currentTiles) return;
+    var blob = new Blob([exportData()], { type: "application/json" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "wang-tiles.json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+  $("btn-copy").addEventListener("click", function () {
+    if (!currentTiles) return;
+    navigator.clipboard.writeText(exportData()).then(function () {
+      $("btn-copy").textContent = "\u2713 已复制";
+      setTimeout(function () { $("btn-copy").textContent = "\u29C9 复制 JSON"; }, 1500);
+    });
+  });
+
+  /* ---------- 事件 ---------- */
+  $("add-rule").addEventListener("click", function () {
+    addRuleRow();
+    $("rule-body").lastElementChild.querySelector("input").focus();
+  });
+  $("clear-rules").addEventListener("click", function () { $("rule-body").innerHTML = ""; });
+  $("btn-generate").addEventListener("click", generate);
+  $("pv-steps").addEventListener("input", function () {
+    $("pv-steps-label").textContent = $("pv-steps").value;
+    if (currentM) { currentSim = TMW.simulate(currentM, parseInt($("pv-steps").value, 10)); renderStats(); renderPreview(); }
+  });
+  /* ---- 模拟器控制 ---- */
+  $("btn-reset").addEventListener("click", function () { ensureFresh(); resetSim(); });
+  $("btn-step").addEventListener("click", function () {
+    ensureFresh();
+    simHasRun = true;
+    stepSim();
+    renderTape();
+    renderPreview();
+  });
+  $("btn-run").addEventListener("click", function () {
+    ensureFresh();
+    simTimer ? stopSimRun() : startSimRun();
+  });
+  $("btn-skip").addEventListener("click", function () {
+    ensureFresh();
+    simHasRun = true;
+    var n = 0;
+    while (n < 100 && !simHalted && stepSim()) n++;
+    renderTape();
+    renderPreview();
+  });
+  $("speed").addEventListener("input", function () {
+    $("speed-label").textContent = ($("speed").value * 10) + " 步/秒";
+    if (simTimer) startSimRun(); // 按新速度继续
+  });
+  $("pv-cell").addEventListener("input", function () {
+    $("pv-cell-label").textContent = $("pv-cell").value + "px";
+    if (currentM) renderPreview();
+  });
+  document.querySelectorAll(".gal-filter").forEach(function (b) {
+    b.addEventListener("click", function () {
+      document.querySelectorAll(".gal-filter").forEach(function (x) { x.classList.remove("active"); });
+      b.classList.add("active");
+      galFilter = b.getAttribute("data-f");
+      renderGallery();
+    });
+  });
+
+  /* ---------- 示例 ---------- */
+  var examples = {
+    binInc: {
+      tape: "1 0 1 1", init: "q0", accept: "qacc", reject: "",
+      rules: [
+        ["q0", "0", "0", "R", "q0"], ["q0", "1", "1", "R", "q0"], ["q0", "_", "_", "L", "q1"],
+        ["q1", "1", "0", "L", "q1"], ["q1", "0", "1", "N", "qacc"], ["q1", "_", "1", "N", "qacc"]
+      ]
+    },
+    palindrome: {
+      tape: "1 0 0 1", init: "q0", accept: "qacc", reject: "qrej",
+      rules: [
+        ["q0", "0", "_", "R", "q0a"], ["q0", "1", "_", "R", "q1a"], ["q0", "_", "_", "N", "qacc"],
+        ["q0a", "*", "*", "R", "q0a"], ["q0a", "_", "_", "L", "q0b"], ["q0b", "0", "_", "L", "qret"],
+        ["q0b", "_", "_", "N", "qacc"], ["q1a", "*", "*", "R", "q1a"], ["q1a", "_", "_", "L", "q1b"],
+        ["q1b", "1", "_", "L", "qret"], ["q1b", "_", "_", "N", "qacc"],
+        ["qret", "*", "*", "L", "qret"], ["qret", "_", "_", "R", "q0"],
+        ["q0b", "1", "1", "N", "qrej"], ["q1b", "0", "0", "N", "qrej"]
+      ]
+    },
+    leftMove: {
+      tape: "0", init: "q0", accept: "qacc", reject: "",
+      rules: [["q0", "0", "1", "L", "q1"], ["q1", "_", "_", "N", "qacc"]]
+    },
+    infinite: {
+      tape: "0 0 0", init: "q0", accept: "", reject: "",
+      rules: [["q0", "*", "1", "R", "q0"]]
+    }
+  };
+  function loadExample(e) {
+    $("tape-input").value = e.tape;
+    $("init-state").value = e.init;
+    $("accept-states").value = e.accept;
+    $("reject-states").value = e.reject;
+    $("rule-body").innerHTML = "";
+    e.rules.forEach(addRuleRow);
+    generate();
+  }
+  $("load-example1").addEventListener("click", function () { loadExample(examples.binInc); });
+  $("load-example2").addEventListener("click", function () { loadExample(examples.palindrome); });
+  $("load-example3").addEventListener("click", function () { loadExample(examples.leftMove); });
+  $("load-example4").addEventListener("click", function () { loadExample(examples.infinite); });
+
+  /* ---------- 启动 ---------- */
+  loadExample(examples.binInc);
+})();
+</script>
+</body>
+</html>
