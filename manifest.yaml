@@ -85,6 +85,16 @@ html:
     harness: "dsh"
     preset: "anchored-standard"
     date: 2026-08-15
+  - file: dalton-bead.html
+    title: 拼豆图纸生成器
+    prompt:
+      - "测试一下，回复OK"
+      - "色觉异常的人想要玩拼豆游戏，可能无法精确识别豆子的颜色，我的解决方案是使用一个HTML页面，用户上传一张照片，自动转换成网格，然后根据配色方案和拼豆的编号对照表，把在网格的颜色上标出代码。 artkal-a.json 是一个代码对照表。你现在设计一个单HTML文件，实现这个功能，自己设计合理的交互。直接开发。"
+    model: "deepseek-v4-pro-0813"
+    effort: "max"
+    harness: "pi"
+    preset: "anchored-standard"
+    date: 2026-08-16
 
 svg:
   - file: penrose_stairs.svg
