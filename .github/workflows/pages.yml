@@ -18,7 +18,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install OpenSCAD
         run: |
@@ -26,13 +26,13 @@ jobs:
           sudo apt-get install -y openscad xvfb
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v10
         with:
           enable-cache: false
 
       # openscad 的 CGAL 渲染结果磁盘缓存，scad 文件不变时直接命中
       - name: Cache OpenSCAD render cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/OpenSCAD
           key: openscad-${{ hashFiles('scad/*.scad') }}
@@ -45,7 +45,7 @@ jobs:
         run: uv run tools/build_index.py
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: _site
 
@@ -57,4 +57,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
