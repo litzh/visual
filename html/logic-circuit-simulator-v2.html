@@ -1,0 +1,1618 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<title>逻辑电路模拟器 v2 · 时序电路与时钟</title>
+<style>
+  :root {
+    --bg: #0b1220;
+    --panel: rgba(17, 25, 40, 0.86);
+    --line: rgba(148, 163, 184, 0.16);
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #38bdf8;
+    --ok: #22d3ee;
+    --amber: #fbbf24;
+    --danger: #f87171;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background:
+      radial-gradient(1100px 500px at 15% -10%, rgba(56, 189, 248, 0.12), transparent 60%),
+      radial-gradient(900px 500px at 110% 10%, rgba(167, 139, 250, 0.12), transparent 60%),
+      linear-gradient(180deg, #0b1220 0%, #0f172a 55%, #111827 100%);
+    color: var(--text);
+    font-family: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  header { max-width: 1420px; margin: 0 auto; padding: 18px 20px 8px; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  header h1 {
+    margin: 0; font-size: clamp(20px, 2.6vw, 27px); letter-spacing: 0.5px;
+    background: linear-gradient(90deg, #7dd3fc, #c4b5fd, #f0abfc);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header p { margin: 0; color: var(--muted); font-size: 13px; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(8px);
+  }
+
+  /* ---------- 布局 ---------- */
+  .app {
+    display: flex; gap: 14px; max-width: 1420px; margin: 0 auto; padding: 10px 20px 28px;
+    align-items: stretch; height: calc(100vh - 96px); min-height: 640px;
+  }
+  .sidebar { width: 252px; flex-shrink: 0; padding: 16px 14px; overflow-y: auto; }
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+
+  .side-title { font-size: 11.5px; letter-spacing: 2px; color: var(--muted); margin: 14px 0 8px; font-weight: 700; }
+  .side-title:first-child { margin-top: 0; }
+
+  /* ---------- 工具按钮 ---------- */
+  .tool-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 2px 0 4px; }
+  .tool-btn, .act-btn {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    padding: 9px 4px 7px; border-radius: 12px; border: 1px solid var(--line);
+    background: rgba(15, 23, 42, 0.6); color: var(--muted); cursor: pointer;
+    font-size: 12px; font-weight: 600; font-family: inherit;
+    transition: transform 0.12s, border-color 0.2s, background 0.2s;
+  }
+  .tool-btn kbd, .act-btn kbd {
+    font-size: 10px; opacity: 0.75; background: rgba(51, 65, 85, 0.5);
+    border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; font-family: inherit; font-weight: 400;
+  }
+  .tool-btn:hover, .act-btn:hover { border-color: rgba(56, 189, 248, 0.55); transform: translateY(-1px); }
+  .tool-btn.active {
+    background: linear-gradient(135deg, rgba(2, 132, 199, 0.35), rgba(124, 58, 237, 0.35));
+    border-color: rgba(56, 189, 248, 0.65); color: #e0f2fe;
+  }
+  .act-btn { flex-direction: row; gap: 6px; padding: 9px 8px; }
+  .act-btn.active { border-color: rgba(251, 191, 36, 0.65); color: #fde68a; background: rgba(120, 53, 15, 0.25); }
+  .act-btn.danger { color: #fca5a5; }
+  .act-btn.danger:hover { border-color: rgba(248, 113, 113, 0.6); }
+
+  /* ---------- 元件面板 ---------- */
+  .palette { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .pal-btn {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    padding: 8px 4px 6px; border-radius: 12px; border: 1px solid var(--line);
+    background: rgba(15, 23, 42, 0.6); cursor: pointer; color: var(--muted);
+    font-size: 11.5px; font-family: inherit;
+    transition: transform 0.12s, border-color 0.2s, box-shadow 0.2s;
+  }
+  .pal-btn:hover { border-color: currentColor; transform: translateY(-1px); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); }
+  .pal-btn .picon { width: 100%; height: 40px; display: block; }
+  .ic-shape { fill: rgba(30, 41, 59, 0.9); stroke: currentColor; stroke-width: 2; }
+  .ic-arc { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+  .ic-bubble { fill: #0b1220; stroke: currentColor; stroke-width: 2; }
+  .ic-lead { stroke: currentColor; stroke-width: 2; }
+  .ic-dot { fill: currentColor; }
+
+  select {
+    width: 100%; padding: 9px 10px; border-radius: 11px; border: 1px solid var(--line);
+    background: rgba(15, 23, 42, 0.7); color: var(--text); font-size: 12.5px;
+    font-family: inherit; cursor: pointer; outline: none;
+  }
+  select:focus { border-color: rgba(56, 189, 248, 0.6); }
+
+  .tips {
+    margin-top: 18px; padding: 12px; border-radius: 12px;
+    background: rgba(2, 6, 23, 0.5); border: 1px dashed var(--line);
+    font-size: 11.5px; line-height: 1.9; color: var(--muted);
+  }
+  .tips b { color: #7dd3fc; font-weight: 600; }
+
+  /* ---------- 画布 ---------- */
+  .canvas-panel { position: relative; flex: 1; min-height: 420px; overflow: hidden; }
+  #canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; user-select: none; touch-action: none; }
+  #canvas[data-mode="select"] { cursor: default; }
+  #canvas[data-mode="select"] .comp { cursor: grab; }
+  #canvas[data-mode="place"] { cursor: crosshair; }
+  #canvas[data-mode="wire"] { cursor: crosshair; }
+  #canvas[data-mode="delete"] { cursor: not-allowed; }
+  #canvas[data-mode="delete"] .comp { cursor: not-allowed; }
+  #canvas[data-mode="delete"] .pin-hit { pointer-events: none; }
+
+  #emptyHint { fill: rgba(148, 163, 184, 0.5); font-size: 15px; text-anchor: middle; pointer-events: none; }
+  #emptyHint tspan.sub { font-size: 12.5px; }
+
+  .legend {
+    position: absolute; left: 12px; top: 12px; display: flex; gap: 14px; align-items: center;
+    padding: 7px 12px; border-radius: 12px; background: rgba(2, 6, 23, 0.7);
+    border: 1px solid var(--line); font-size: 12px; color: var(--muted); pointer-events: none;
+  }
+  .legend i { display: inline-block; width: 18px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+  .legend i.l0 { background: #475569; }
+  .legend i.l1 { background: #22d3ee; box-shadow: 0 0 6px rgba(34, 211, 238, 0.8); }
+  .legend i.lx { background: repeating-linear-gradient(90deg, #f87171 0 4px, transparent 4px 7px); }
+
+  .zoom-ctrl {
+    position: absolute; right: 12px; bottom: 12px; display: flex; align-items: center; gap: 6px;
+    padding: 6px; border-radius: 12px; background: rgba(2, 6, 23, 0.7);
+    border: 1px solid var(--line); backdrop-filter: blur(6px);
+  }
+  .zoom-ctrl button {
+    width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--line);
+    background: rgba(51, 65, 85, 0.5); color: var(--text); cursor: pointer; font-size: 15px; line-height: 1;
+  }
+  .zoom-ctrl button:hover { border-color: rgba(56, 189, 248, 0.55); }
+  .zoom-ctrl span { font-size: 12px; color: var(--muted); min-width: 44px; text-align: center; }
+
+  /* ---------- 仿真控制条 ---------- */
+  .sim-bar {
+    position: absolute; top: 12px; right: 12px; display: flex; align-items: center; gap: 6px;
+    padding: 6px 8px; border-radius: 12px; background: rgba(2, 6, 23, 0.72);
+    border: 1px solid var(--line); backdrop-filter: blur(6px);
+  }
+  .sim-bar button {
+    padding: 6px 10px; border-radius: 9px; border: 1px solid var(--line);
+    background: rgba(51, 65, 85, 0.5); color: var(--text); cursor: pointer;
+    font-size: 12px; font-family: inherit; font-weight: 600;
+  }
+  .sim-bar button:hover { border-color: rgba(56, 189, 248, 0.55); }
+  .sim-bar button.on {
+    background: linear-gradient(135deg, rgba(2, 132, 199, 0.45), rgba(124, 58, 237, 0.45));
+    border-color: rgba(56, 189, 248, 0.65);
+  }
+  .sim-bar select { width: auto; padding: 6px 8px; border-radius: 9px; font-size: 12px; }
+  .sim-bar .sim-time { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 74px; text-align: center; }
+
+  /* ---------- 电路元素 ---------- */
+  .wire-g { pointer-events: none; }
+  .wire { fill: none; stroke: #475569; stroke-linecap: round; stroke-linejoin: round; }
+  .wire-glow { fill: none; stroke: #22d3ee; stroke-linecap: round; stroke-linejoin: round; opacity: 0; transition: opacity 0.15s; }
+  .wire-g[data-v="1"] .wire { stroke: #22d3ee; }
+  .wire-g[data-v="1"] .wire-glow.g1 { opacity: 0.13; }
+  .wire-g[data-v="1"] .wire-glow.g2 { opacity: 0.25; }
+  .wire-g[data-v="x"] .wire { stroke: #f87171; }
+  .wire-preview { fill: none; stroke: #f0abfc; stroke-linecap: round; pointer-events: none; }
+
+  .pin { fill: #0b1220; stroke: #475569; stroke-width: 2; }
+  .pin[data-v="1"] { stroke: #22d3ee; fill: #155e75; }
+  .pin[data-v="x"] { stroke: #f87171; }
+  .pin-hit { fill: transparent; stroke: none; pointer-events: all; }
+
+  .gate-shape { fill: rgba(30, 41, 59, 0.92); stroke-width: 2; }
+  .xor-arc { fill: none; stroke-width: 2; }
+  .bubble { fill: #0b1220; stroke-width: 2; }
+  .lead { stroke-width: 2.5; stroke-linecap: round; }
+  .lead[data-v="1"] { stroke: #22d3ee !important; }
+  .lead[data-v="x"] { stroke: #f87171 !important; }
+  .cname { fill: #94a3b8; font-size: 12px; text-anchor: middle; pointer-events: none; }
+
+  .sw-body { fill: rgba(15, 23, 42, 0.9); stroke: #64748b; stroke-width: 2; cursor: pointer; }
+  .sw-body[data-v="1"] { stroke: #fbbf24; fill: rgba(69, 26, 3, 0.35); }
+  .sw-val { fill: #94a3b8; font-size: 15px; font-weight: 700; text-anchor: middle; pointer-events: none; }
+  .sw-val[data-v="1"] { fill: #fbbf24; }
+
+  .lamp-halo { fill: rgba(251, 191, 36, 0.16); opacity: 0; transition: opacity 0.2s; }
+  .lamp-halo[data-v="1"] { opacity: 1; }
+  .lamp-body { fill: #1e293b; stroke: #475569; stroke-width: 2; }
+  .lamp-body[data-v="1"] { fill: #fbbf24; stroke: #fde68a; filter: drop-shadow(0 0 10px rgba(251, 191, 36, 0.9)); }
+  .lamp-body[data-v="x"] { fill: #7f1d1d; stroke: #f87171; }
+  .lamp-val { fill: #64748b; font-size: 14px; font-weight: 700; text-anchor: middle; pointer-events: none; }
+  .lamp-val[data-v="1"] { fill: #451a03; }
+  .lamp-val[data-v="x"] { fill: #fecaca; }
+
+  /* ---------- 时序器件 ---------- */
+  .clk-body { fill: rgba(15, 23, 42, 0.9); stroke-width: 2; cursor: pointer; }
+  .clk-wave { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+  .clk-led { fill: #1e293b; stroke: #64748b; stroke-width: 1.5; }
+  .clk-led[data-v="1"] { fill: #fbbf24; stroke: #fde68a; filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.9)); }
+  .btn-body { fill: rgba(15, 23, 42, 0.9); stroke-width: 2; cursor: pointer; }
+  .btn-cap { fill: #1e293b; stroke: #64748b; stroke-width: 1.5; }
+  .btn-cap[data-v="1"] { fill: #22d3ee; stroke: #a5f3fc; filter: drop-shadow(0 0 8px rgba(34, 211, 238, 0.9)); }
+  .vcc-body { fill: rgba(15, 23, 42, 0.9); stroke-width: 2; }
+  .vcc-txt { fill: #fb7185; font-size: 13px; font-weight: 700; text-anchor: middle; pointer-events: none; }
+  .ff-body { fill: rgba(30, 41, 59, 0.92); stroke-width: 2; }
+  .ff-q { fill: #94a3b8; font-size: 15px; font-weight: 700; text-anchor: middle; pointer-events: none; }
+  .ff-q[data-v="1"] { fill: #22d3ee; }
+  .ff-q[data-v="x"] { fill: #f87171; }
+  .pin-label { fill: #64748b; font-size: 9.5px; pointer-events: none; }
+  .seg { fill: none; stroke: #263449; stroke-width: 4; stroke-linecap: round; }
+  .seg[data-v="1"] { stroke: #fbbf24; filter: drop-shadow(0 0 5px rgba(251, 191, 36, 0.7)); }
+
+  /* ---------- 真值表 ---------- */
+  .truth-panel { padding: 14px; }
+  .truth-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .truth-head h3 { margin: 0; font-size: 15px; }
+  .truth-head .tt-info { color: var(--muted); font-size: 12px; }
+  .truth-head .close-btn { margin-left: auto; }
+  table.truth { border-collapse: collapse; font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 13px; width: 100%; }
+  .truth th, .truth td { padding: 5px 12px; text-align: center; border: 1px solid rgba(148, 163, 184, 0.12); }
+  .truth th { position: sticky; top: 0; background: #0f172a; color: #7dd3fc; font-size: 12px; z-index: 1; }
+  .truth td.v1 { color: #22d3ee; background: rgba(34, 211, 238, 0.08); }
+  .truth td.v0 { color: #64748b; }
+  .truth td.vx { color: #f87171; background: rgba(248, 113, 113, 0.08); }
+  .truth td.swc { background: rgba(148, 163, 184, 0.06); }
+  .truth td.ttsep { color: var(--muted); background: rgba(148, 163, 184, 0.04); }
+
+  /* ---------- 状态栏 ---------- */
+  .status-bar {
+    padding: 10px 14px; display: flex; gap: 18px; align-items: center; flex-wrap: wrap;
+    font-size: 12.5px; color: var(--muted); border: 1px solid var(--line); border-radius: 14px;
+    background: var(--panel); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  }
+  .status-bar b { color: var(--text); }
+  #flashEl { color: #fbbf24; font-weight: 600; }
+  .status-warn { color: #f87171; font-weight: 600; }
+  #simStatus { color: #7dd3fc; font-weight: 600; }
+  #statusZoom { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<header>
+  <h1>逻辑电路模拟器 v2</h1>
+  <p>组合 / 时序电路搭建与测试 · 时钟与触发器 · 事件驱动仿真</p>
+</header>
+
+<div class="app">
+  <aside class="panel sidebar">
+    <div class="side-title">工具</div>
+    <div class="tool-row">
+      <button class="tool-btn active" data-mode="select">选择 / 移动<kbd>V</kbd></button>
+      <button class="tool-btn" data-mode="wire">连线<kbd>W</kbd></button>
+      <button class="tool-btn" data-mode="delete">删除<kbd>D</kbd></button>
+    </div>
+
+    <div class="side-title">元件</div>
+    <div class="palette" id="palette"></div>
+
+    <div class="side-title">示例电路</div>
+    <select id="exampleSel">
+      <option value="half">半加器（Half Adder）</option>
+      <option value="full">全加器（Full Adder）</option>
+      <option value="sr">SR 锁存器（与非门交叉耦合）</option>
+      <option value="mux">2 选 1 多路选择器</option>
+      <option value="dff">D 触发器（按钮手动时钟）</option>
+      <option value="counter4">4 位二进制计数器</option>
+      <option value="seg7">7 段数码管</option>
+    </select>
+
+    <div class="side-title">操作</div>
+    <div class="tool-row">
+      <button class="act-btn" id="btnTruth">真值表<kbd>T</kbd></button>
+      <button class="act-btn" id="btnFit">适应画布<kbd>F</kbd></button>
+      <button class="act-btn danger" id="btnClear">清空</button>
+    </div>
+
+    <div class="tips">
+      <b>选择</b>：拖动元件移动；点击开关切换 0 / 1；点击时钟切换频率；按住按钮输出 1<br>
+      <b>连线</b>：点击输出引脚 → 再点击输入引脚<br>
+      <b>删除</b>：点击元件或导线将其移除<br>
+      <b>Space</b> 运行 / 暂停 · <b>S</b> 单步一拍（一个时钟上升沿）<br>
+      滚轮缩放画布，按住空白处拖动平移<br>
+      青色 = 1 · 灰色 = 0 · 红色虚线 = 振荡<br>
+      电路自动保存，刷新页面不会丢失
+    </div>
+  </aside>
+
+  <div class="main">
+    <section class="panel canvas-panel">
+      <svg id="canvas" data-mode="select">
+        <defs>
+          <pattern id="gridMinor" width="20" height="20" patternUnits="userSpaceOnUse">
+            <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(148,163,184,0.07)" stroke-width="1"/>
+          </pattern>
+          <pattern id="gridMajor" width="100" height="100" patternUnits="userSpaceOnUse">
+            <path d="M 100 0 L 0 0 0 100" fill="none" stroke="rgba(148,163,184,0.15)" stroke-width="1"/>
+          </pattern>
+        </defs>
+        <rect id="gridMajorRect" width="100%" height="100%" fill="url(#gridMajor)"/>
+        <rect id="gridMinorRect" width="100%" height="100%" fill="url(#gridMinor)"/>
+        <g id="world">
+          <g id="wires"></g>
+          <g id="comps"></g>
+          <g id="previewG"></g>
+        </g>
+        <text id="emptyHint" x="50%" y="50%">
+          <tspan x="50%">画布空空如也</tspan>
+          <tspan class="sub" x="50%" dy="28">从左侧选择元件并点击画布放置，或载入示例电路</tspan>
+        </text>
+      </svg>
+      <div class="legend">
+        <span><i class="l1"></i>1 高电平</span>
+        <span><i class="l0"></i>0 低电平</span>
+        <span><i class="lx"></i>振荡</span>
+      </div>
+      <div class="sim-bar">
+        <button id="btnRun" title="Space">▶ 运行</button>
+        <button id="btnStep" title="S">⏭ 单步</button>
+        <select id="speedSel" title="仿真速度">
+          <option value="0.25">0.25×</option>
+          <option value="0.5">0.5×</option>
+          <option value="1" selected>1×</option>
+          <option value="2">2×</option>
+          <option value="5">5×</option>
+          <option value="10">10×</option>
+          <option value="20">20×</option>
+          <option value="50">50×</option>
+        </select>
+        <span class="sim-time" id="simTimeEl">t = 0.00s</span>
+      </div>
+      <div class="zoom-ctrl">
+        <button id="zoomOut" title="缩小">−</button>
+        <span id="zoomPct">100%</span>
+        <button id="zoomIn" title="放大">+</button>
+        <button id="btnFit2" title="适应画布">⤢</button>
+      </div>
+    </section>
+
+    <section class="panel truth-panel" id="truthPanel" hidden>
+      <div class="truth-head">
+        <h3>真值表</h3>
+        <span class="tt-info" id="ttInfo"></span>
+        <button class="act-btn close-btn" id="btnTruthClose">关闭</button>
+      </div>
+      <div style="overflow:auto;max-height:240px"><table class="truth" id="ttTable"></table></div>
+    </section>
+
+    <footer class="status-bar">
+      <span id="statusMode"></span>
+      <span id="simStatus"></span>
+      <span id="statusInfo"></span>
+      <span class="status-warn" id="statusWarn"></span>
+      <span id="flashEl"></span>
+      <span id="statusZoom"></span>
+    </footer>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* =====================================================================
+ * 逻辑电路模拟器 v2 —— 事件驱动仿真内核（纯逻辑，无 DOM 依赖，可单独测试）
+ *
+ * 时间模型：逻辑时间以 tick 计（TICK_RATE = 1000 tick/s）。
+ * 每个门有 GATE_DELAY = 1 tick 的传播延迟；触发器在时钟上升沿采样输入，
+ * 1 tick 后更新输出。时钟源按频率产生边沿事件。
+ * ===================================================================== */
+
+/* ---------- 门电路定义 ---------- */
+const AND_PATH = 'M -32 -22 H -8 A 22 22 0 0 1 -8 22 H -32 Z';
+const OR_PATH  = 'M -32 -22 Q -20 -22 -13 -22 C -2 -22 6 -17 11 -10 C 13 -6 14 -3 14 0 C 14 3 13 6 11 10 C 6 17 -2 22 -13 22 Q -20 22 -32 22 Q -21 0 -32 -22 Z';
+const TRI_PATH = 'M -32 -22 L 20 0 L -32 22 Z';
+const XOR_ARC  = 'M -36 -22 Q -27.5 0 -36 22';
+
+const TICK_RATE = 1000;   // 1 逻辑秒 = 1000 tick
+const GATE_DELAY = 1;     // 门传播延迟（tick）
+const CLK_FREQS = [0.5, 1, 2, 4, 8, 16];
+
+const TYPE_COLORS = {
+  in: '#38bdf8', out: '#fbbf24',
+  and: '#38bdf8', or: '#a78bfa', not: '#f472b6', nand: '#34d399',
+  nor: '#fb923c', xor: '#facc15', xnor: '#22d3ee',
+  clk: '#fbbf24', btn: '#38bdf8', dff: '#a78bfa', tff: '#f472b6',
+  jkff: '#fb923c', dlatch: '#34d399', srlatch: '#22d3ee',
+  seg7: '#facc15', vcc: '#fb7185',
+};
+const COMP_NAMES = {
+  clk: '时钟', btn: '按钮', dff: 'D 触发器', tff: 'T 触发器',
+  jkff: 'JK 触发器', dlatch: 'D 锁存器', srlatch: 'SR 锁存器',
+  seg7: '数码管', vcc: 'VCC',
+};
+const CLK_PIN = { dff: 1, tff: 1, jkff: 2 };
+const GATE_DEFS = {
+  and:  { ins: 2, fn: a => a[0] & a[1],         path: AND_PATH, label: '与门' },
+  or:   { ins: 2, fn: a => a[0] | a[1],         path: OR_PATH,  label: '或门' },
+  not:  { ins: 1, fn: a => 1 - a[0],            path: TRI_PATH, label: '非门', bubble: true },
+  nand: { ins: 2, fn: a => (a[0] & a[1]) ^ 1,   path: AND_PATH, label: '与非门', bubble: true },
+  nor:  { ins: 2, fn: a => (a[0] | a[1]) ^ 1,   path: OR_PATH,  label: '或非门', bubble: true },
+  xor:  { ins: 2, fn: a => a[0] ^ a[1],         path: OR_PATH,  label: '异或门', extra: true },
+  xnor: { ins: 2, fn: a => (a[0] ^ a[1]) ^ 1,   path: OR_PATH,  label: '同或门', extra: true, bubble: true },
+};
+const PALETTE = [
+  { type: 'in',  name: '开关' },
+  { type: 'out', name: '灯泡' },
+  ...Object.keys(GATE_DEFS).map(t => ({ type: t, name: GATE_DEFS[t].label })),
+  { type: 'clk', name: '时钟' },
+  { type: 'btn', name: '按钮' },
+  { type: 'dff', name: 'D 触发器' },
+  { type: 'tff', name: 'T 触发器' },
+  { type: 'jkff', name: 'JK 触发器' },
+  { type: 'dlatch', name: 'D 锁存器' },
+  { type: 'srlatch', name: 'SR 锁存器' },
+  { type: 'seg7', name: '数码管' },
+  { type: 'vcc', name: 'VCC' },
+];
+const FF_TYPES = ['dff', 'tff', 'jkff', 'dlatch', 'srlatch'];
+
+/* ---------- 电路状态 ---------- */
+let comps = [];   // {id, type, x, y, value?, freq?, level?, state?, outs[]}
+let wires = [];   // {id, from:{id,pin}, to:{id,pin}}
+let mode = 'select';
+let placeType = null;
+let view = { x: 80, y: 90, s: 1 };
+let conn = null;      // 连线中的起点 {cid, side, idx}
+let drag = null;      // 拖动中的元件 {cid, sx, sy, ox, oy, moved}
+let pan = null;       // 平移 {sx, sy, vx, vy}
+let btnHeld = null;   // 按住的按钮 cid
+let simTime = 0;      // 逻辑时间（tick）
+let running = false;
+let speed = 1;
+const queue = [];     // 事件队列 {t, cid, pin, v}（按 t 升序）
+const flipHist = new Map(); // 运行期翻转直方图（仅 advanceTo 记录，时间真实推进）
+const stuckOsc = new Set();// 持续振荡的输出（结构变更时清除）
+let ttOpen = false;
+let saveTimer = null;
+let flashTimer = null;
+let idSeq = 1;
+const uid = () => idSeq++;
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+/* ---------- 几何 ---------- */
+function pinsOf(type) {
+  switch (type) {
+    case 'in':  return { ins: [], outs: [{ x: 24, y: 0 }] };
+    case 'out': return { ins: [{ x: -16, y: 0 }], outs: [] };
+    case 'clk': return { ins: [], outs: [{ x: 24, y: 0 }] };
+    case 'btn': return { ins: [], outs: [{ x: 17, y: 0 }] };
+    case 'vcc': return { ins: [], outs: [{ x: 16, y: 0 }] };
+    case 'seg7':
+      return { ins: [-18, -12, -6, 0, 6, 12, 18].map(y => ({ x: -26, y })), outs: [] };
+    case 'dff': case 'tff': case 'dlatch': case 'srlatch':
+      return { ins: [{ x: -30, y: -14 }, { x: -30, y: 14 }], outs: [{ x: 30, y: -14 }, { x: 30, y: 14 }] };
+    case 'jkff':
+      return { ins: [{ x: -30, y: -16 }, { x: -30, y: 0 }, { x: -30, y: 16 }], outs: [{ x: 30, y: -16 }, { x: 30, y: 16 }] };
+    default: {
+      const n = GATE_DEFS[type].ins;
+      return {
+        ins:  n === 1 ? [{ x: -33, y: 0 }] : [{ x: -33, y: -12 }, { x: -33, y: 12 }],
+        outs: [{ x: 34, y: 0 }],
+      };
+    }
+  }
+}
+function pinPos(c, side, idx) {
+  const p = pinsOf(c.type)[side === 'out' ? 'outs' : 'ins'][idx];
+  if (!p) return null;
+  return { x: c.x + p.x, y: c.y + p.y };
+}
+function compById(id) { return comps.find(c => c.id === id); }
+function wireById(id) { return wires.find(w => w.id === id); }
+function wireInto(cid, pin) { return wires.find(w => w.to.id === cid && w.to.pin === pin); }
+function wiresOf(cid) { return wires.filter(w => w.from.id === cid || w.to.id === cid); }
+function connectWire(a, b, p = 0, q = 0) {
+  wires.push({ id: uid(), from: { id: a.id, pin: p }, to: { id: b.id, pin: q } });
+}
+
+/* ---------- 正交走线 ---------- */
+function wireRoute(p1, p2, w) {
+  const stub = 26;
+  const off = ((w ? w.id : 0) % 3) * 16;
+  const sx = p1.x, sy = p1.y, tx = p2.x, ty = p2.y;
+  if (tx >= sx + stub) {
+    let mid = tx - 46 - off;
+    if (mid <= sx + stub + 2) mid = (sx + stub + tx) / 2;
+    return [{ x: sx, y: sy }, { x: mid, y: sy }, { x: mid, y: ty }, { x: tx, y: ty }];
+  }
+  const dir = ty >= sy ? 1 : -1;
+  const yLane = ty - dir * (34 + ((w ? w.to.pin : 0) % 2) * 16);
+  const xLane = tx - 46 - off;
+  return [
+    { x: sx, y: sy }, { x: sx + stub, y: sy }, { x: sx + stub, y: yLane },
+    { x: xLane, y: yLane }, { x: xLane, y: ty }, { x: tx, y: ty },
+  ];
+}
+function routePath(pts) { return 'M ' + pts.map(p => p.x + ' ' + p.y).join(' L '); }
+function wirePathOf(w) {
+  const a = compById(w.from.id), b = compById(w.to.id);
+  if (!a || !b) return '';
+  const p1 = pinPos(a, 'out', w.from.pin), p2 = pinPos(b, 'in', w.to.pin);
+  if (!p1 || !p2) return '';
+  return routePath(wireRoute(p1, p2, w));
+}
+
+/* ---------- 事件驱动仿真内核 ---------- */
+function clockHalf(c) { return Math.max(1, Math.round(TICK_RATE / c.freq / 2)); }
+
+function pushEvent(ev) {
+  let lo = 0, hi = queue.length;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (queue[m].t <= ev.t) lo = m + 1; else hi = m; }
+  queue.splice(lo, 0, ev);
+}
+
+function inVal(c, pin) {
+  const w = wireInto(c.id, pin);
+  if (!w) return 0;
+  const s = compById(w.from.id);
+  return s && s.outs ? (s.outs[w.from.pin] ?? 0) : 0;
+}
+
+function propagateFrom(cid, pin, t) {
+  for (const w of wires) if (w.from.id === cid && w.from.pin === pin) onInput(w.to.id, w.to.pin, t);
+}
+
+function recordFlip(cid, pin, t) {
+  const k = cid + ':o' + pin;
+  let f = flipHist.get(k);
+  if (!f) { f = { t1: -1, t2: -1 }; flipHist.set(k, f); }
+  f.t1 = f.t2; f.t2 = t;
+}
+/* 振荡判定：
+ * 1) stuckOsc：settle 失控 / 固定点初始化不收敛 / advanceTo 失控时标记，结构变更前一直成立；
+ * 2) 运行期直方图：同一输出两次翻转间隔 <= 4 tick 且最近一次翻转在 20 tick 内。 */
+function isOsc(k, now) {
+  if (stuckOsc.has(k)) return true;
+  const f = flipHist.get(k);
+  return !!f && f.t1 >= 0 && (f.t2 - f.t1) <= 4 && (now - f.t2) <= 20;
+}
+function wireVal(w) {
+  const key = w.from.id + ':o' + w.from.pin;
+  if (isOsc(key, simTime)) return 'x';
+  const s = compById(w.from.id);
+  return String(s && s.outs ? (s.outs[w.from.pin] ?? 0) : 0);
+}
+function outPinVal(c, pin) {
+  const k = c.id + ':o' + pin;
+  return isOsc(k, simTime) ? 'x' : String(c.outs && c.outs[pin] !== undefined ? c.outs[pin] : 0);
+}
+
+/* 输入变化 → 计算器件行为（组合门立即重算，触发器看边沿） */
+function onInput(cid, pin, t) {
+  const c = compById(cid);
+  if (!c) return;
+  const t0 = t + GATE_DELAY;
+  const d = GATE_DEFS[c.type];
+  if (d) {
+    /* 输入变化一律重新调度：此刻 outs 可能是过期值（已有未应用的事件在队列中），
+     * 与它比较会漏发事件、卡在错误状态；由 applyEvent 统一做无变化去重 */
+    const ins = [];
+    for (let i = 0; i < d.ins; i++) ins.push(inVal(c, i));
+    const v = d.fn(ins);
+    pushEvent({ t: t0, cid, pin: 0, v });
+    return;
+  }
+  switch (c.type) {
+    case 'out': break; /* 灯泡直接反映输入，渲染时读取 */
+    case 'dlatch': {
+      const en = inVal(c, 1), dv = inVal(c, 0);
+      const nq = en ? dv : c.state.q;
+      if (nq !== c.state.q) {
+        c.state.q = nq;
+        pushEvent({ t: t0, cid, pin: 0, v: nq });
+        pushEvent({ t: t0, cid, pin: 1, v: nq ^ 1 });
+      }
+      break;
+    }
+    case 'dff': case 'tff': case 'jkff': {
+      const cp = CLK_PIN[c.type];
+      if (pin !== cp) break;
+      const clk = inVal(c, cp);
+      if (clk === 1 && c.state.prev === 0) {
+        let nq = c.state.q;
+        if (c.type === 'dff') nq = inVal(c, 0);
+        else if (c.type === 'tff') { if (inVal(c, 0) === 1) nq = c.state.q ^ 1; }
+        else {
+          const j = inVal(c, 0), k = inVal(c, 1);
+          nq = (j && !k) ? 1 : (!j && k) ? 0 : (j && k) ? (c.state.q ^ 1) : c.state.q;
+        }
+        if (nq !== c.state.q) {
+          c.state.q = nq;
+          pushEvent({ t: t0, cid, pin: 0, v: nq });
+          pushEvent({ t: t0, cid, pin: 1, v: nq ^ 1 });
+        }
+      }
+      c.state.prev = clk;
+      break;
+    }
+    case 'srlatch': {
+      const s = inVal(c, 0), r = inVal(c, 1);
+      let nq = c.state.q, nqn = c.state.qn;
+      if (s === 0 && r === 0) { nq = 1; nqn = 1; }        /* 双置位（与非型锁存特征） */
+      else if (s === 0 && r === 1) { nq = 1; nqn = 0; }    /* 置位 */
+      else if (s === 1 && r === 0) { nq = 0; nqn = 1; }    /* 复位 */
+      /* s=1,r=1 → 保持 */
+      if (nq !== c.state.q || nqn !== c.state.qn) {
+        c.state.q = nq; c.state.qn = nqn;
+        pushEvent({ t: t0, cid, pin: 0, v: nq });
+        pushEvent({ t: t0, cid, pin: 1, v: nqn });
+      }
+      break;
+    }
+    default: break; /* 源器件无输入 */
+  }
+}
+
+function applyEvent(ev, isRun) {
+  const c = compById(ev.cid);
+  if (!c || !c.outs) return;
+  if (c.outs[ev.pin] === ev.v) return;
+  c.outs[ev.pin] = ev.v;
+  if (isRun) recordFlip(ev.cid, ev.pin, ev.t);
+  propagateFrom(ev.cid, ev.pin, ev.t);
+}
+
+function setSource(c, v, t) {
+  c.value = v;
+  if (c.outs[0] !== v) {
+    c.outs[0] = v;
+    propagateFrom(c.id, 0, t);
+  }
+}
+
+/* 结算所有挂起事件（不推进时钟边沿、不推进 simTime） */
+function settle(maxIters) {
+  maxIters = maxIters || 100000;
+  let g = 0;
+  const recent = [];
+  while (queue.length && g++ < maxIters) {
+    const ev = queue.shift();
+    recent.push(ev.cid + ':o' + ev.pin);
+    if (recent.length > 200) recent.shift();
+    applyEvent(ev, false);
+  }
+  if (queue.length) {
+    /* 失控（自持振荡）：把最近活跃的输出标记为持续振荡并丢弃余下事件 */
+    for (const k of recent) stuckOsc.add(k);
+    queue.length = 0;
+  }
+}
+
+/* 推进逻辑时间到 target：处理事件队列与时钟边沿 */
+function advanceTo(target) {
+  if (target <= simTime) return;
+  let g = 0;
+  const recent = [];
+  while (g++ < 200000) {
+    let t = queue.length ? queue[0].t : Infinity;
+    let edge = null;
+    for (const c of comps) {
+      if (c.type !== 'clk') continue;
+      if (c.nextEdge <= simTime) c.nextEdge = simTime + clockHalf(c);
+      if (c.nextEdge < t) { t = c.nextEdge; edge = c; }
+    }
+    if (t > target) break;
+    simTime = t;
+    if (edge && (!queue.length || queue[0].t > t)) {
+      edge.level = 1 - edge.level;
+      edge.outs[0] = edge.level;
+      recordFlip(edge.id, 0, t);
+      propagateFrom(edge.id, 0, t);
+      edge.nextEdge = t + clockHalf(edge);
+    } else if (queue.length) {
+      const ev = queue.shift();
+      recent.push(ev.cid + ':o' + ev.pin);
+      if (recent.length > 200) recent.shift();
+      applyEvent(ev, true);
+    } else break;
+  }
+  if (g >= 200000 && queue.length) {
+    /* 运行期失控（自持振荡）：标记并停止，避免每帧空转 */
+    for (const k of recent) stuckOsc.add(k);
+    queue.length = 0;
+  }
+  if (simTime < target) simTime = target;
+}
+
+/* 结构/状态变化后重建信号：初始化输出、强制计算组合门至稳定、结算事件 */
+function rebuildSignals() {
+  flipHist.clear();
+  stuckOsc.clear();
+  queue.length = 0;
+  for (const c of comps) {
+    if (c.type === 'in' || c.type === 'btn') c.outs = [c.value || 0];
+    else if (c.type === 'vcc') c.outs = [1];
+    else if (c.type === 'clk') c.outs = [c.level || 0];
+    else if (FF_TYPES.includes(c.type)) {
+      c.state = c.state || { q: 0, qn: 1, prev: 0 };
+      c.outs = c.type === 'srlatch' ? [c.state.q, c.state.qn] : [c.state.q, c.state.q ^ 1];
+    }
+    else if (c.type === 'out' || c.type === 'seg7') c.outs = [];
+    else c.outs = [0]; /* 组合门 */
+  }
+  for (const c of comps) {
+    if (FF_TYPES.includes(c.type) && c.type !== 'dlatch' && c.type !== 'srlatch') {
+      c.state.prev = inVal(c, CLK_PIN[c.type]);
+    }
+  }
+  let converged = true;
+  let lastChanged = [];
+  for (let it = 0; it < 200; it++) {
+    let ch = false;
+    lastChanged = [];
+    for (const c of comps) {
+      const d = GATE_DEFS[c.type];
+      if (!d) continue;
+      const ins = [];
+      for (let i = 0; i < d.ins; i++) ins.push(inVal(c, i));
+      const v = d.fn(ins);
+      if (v !== c.outs[0]) {
+        c.outs[0] = v;
+        lastChanged.push(c.id + ':o0');
+        propagateFrom(c.id, 0, simTime + it);
+        ch = true;
+      }
+    }
+    if (!ch) break;
+    if (it === 199) converged = false;
+  }
+  if (!converged) for (const k of lastChanged) stuckOsc.add(k);
+  settle();
+}
+
+/* 重置逻辑时间与事件队列（载入示例/新电路时调用） */
+function resetSim() {
+  simTime = 0;
+  queue.length = 0;
+}
+
+/* ---------- 元件构造 ---------- */
+function makeComp(type, x, y, v) {
+  const c = { id: uid(), type, x, y };
+  if (type === 'in' || type === 'btn') c.value = v || 0;
+  else if (type === 'clk') {
+    c.freq = v || 2;
+    c.level = 0;
+    c.nextEdge = clockHalf(c);
+  }
+  else if (type === 'dff' || type === 'tff' || type === 'jkff') c.state = { q: 0, prev: 0 };
+  else if (type === 'dlatch') c.state = { q: 0 };
+  else if (type === 'srlatch') c.state = { q: 0, qn: 1 };
+  return c;
+}
+
+/* ---------- 示例电路 ---------- */
+function loadExample(name) {
+  comps = [];
+  wires = [];
+  resetSim();
+  const C = (t, x, y, v) => {
+    const c = makeComp(t, x, y, v);
+    comps.push(c);
+    return c;
+  };
+  const W = connectWire;
+
+  if (name === 'half') {
+    const A = C('in', -260, -20), B = C('in', -260, 70);
+    const x = C('xor', -70, 25),  a = C('and', -70, 150);
+    const S = C('out', 140, 25),  Cy = C('out', 140, 150);
+    W(A, x, 0, 0); W(B, x, 0, 1); W(x, S, 0, 0);
+    W(A, a, 0, 0); W(B, a, 0, 1); W(a, Cy, 0, 0);
+  } else if (name === 'full') {
+    const A = C('in', -320, -110), B = C('in', -320, 0), Cin = C('in', -320, 110);
+    const x1 = C('xor', -120, -55), x2 = C('xor', 60, -55);
+    const a1 = C('and', -120, 70), a2 = C('and', -40, 140), o1 = C('or', 140, 80);
+    const S = C('out', 290, -55), Cout = C('out', 290, 80);
+    W(A, x1, 0, 0); W(B, x1, 0, 1); W(x1, x2, 0, 0); W(Cin, x2, 0, 1); W(x2, S, 0, 0);
+    W(A, a1, 0, 0); W(B, a1, 0, 1); W(x1, a2, 0, 0); W(Cin, a2, 0, 1);
+    W(a1, o1, 0, 0); W(a2, o1, 0, 1); W(o1, Cout, 0, 0);
+  } else if (name === 'sr') {
+    const S = C('in', -220, -60, 0), R = C('in', -220, 60, 0);
+    const n1 = C('nand', -40, -60), n2 = C('nand', -40, 60);
+    const Q = C('out', 160, -60), Qn = C('out', 160, 60);
+    W(S, n1, 0, 0); W(n2, n1, 0, 1); W(R, n2, 0, 0); W(n1, n2, 0, 1);
+    W(n1, Q, 0, 0); W(n2, Qn, 0, 0);
+  } else if (name === 'mux') {
+    const D0 = C('in', -260, -80), D1 = C('in', -260, 10), Sel = C('in', -260, 100);
+    const nt = C('not', -80, 100);
+    const a1 = C('and', -60, -50), a2 = C('and', -60, 60);
+    const o1 = C('or', 90, 5);
+    const Y = C('out', 260, 5);
+    W(Sel, nt, 0, 0); W(D0, a1, 0, 0); W(nt, a1, 0, 1);
+    W(D1, a2, 0, 0); W(Sel, a2, 0, 1); W(a1, o1, 0, 0); W(a2, o1, 0, 1); W(o1, Y, 0, 0);
+  } else if (name === 'dff') {
+    const D = C('in', -300, -70, 0);
+    const B = C('btn', -300, 70);
+    const F = C('dff', -60, 0);
+    const Q = C('out', 160, -70), Qn = C('out', 160, 70);
+    W(D, F, 0, 0); W(B, F, 0, 1); W(F, Q, 0, 0); W(F, Qn, 1, 0);
+  } else if (name === 'counter4') {
+    const V = C('vcc', -320, -110);
+    const CLK = C('clk', -320, 0, 2);
+    const T = [0, 1, 2, 3].map(i => C('tff', -140 + 90 * i, 0));
+    const L = [0, 1, 2, 3].map(i => C('out', -140 + 90 * i, 130));
+    for (const t of T) W(V, t, 0, 0);
+    W(CLK, T[0], 0, 1);
+    for (let i = 0; i < 3; i++) W(T[i], T[i + 1], 1, 1); /* Q̄ 下降沿级联 */
+    for (let i = 0; i < 4; i++) W(T[i], L[i], 0, 0);
+  } else if (name === 'seg7') {
+    const S = [0, 1, 2, 3, 4, 5, 6].map(i => C('in', -280, -90 + 30 * i, 1));
+    const D = C('seg7', 20, 0);
+    for (let i = 0; i < 7; i++) W(S[i], D, 0, i);
+  }
+}
+
+/* ---------- 持久化 ---------- */
+const LS_KEY = 'logic-sim-v2';
+function saveState() {
+  try { localStorage.setItem(LS_KEY, JSON.stringify({ comps, wires, view, speed, running, simTime })); } catch (e) {}
+}
+function loadState() {
+  try {
+    const s = JSON.parse(localStorage.getItem(LS_KEY));
+    if (s && Array.isArray(s.comps) && Array.isArray(s.wires)) return s;
+  } catch (e) {}
+  return null;
+}
+
+/* =====================================================================
+ * 渲染与交互（DOM 部分）
+ * ===================================================================== */
+const NS = 'http://www.w3.org/2000/svg';
+let svg, world, wiresG, compsG, previewG, minorPat, majorPat, minorRect, emptyHint;
+let statusModeEl, statusInfoEl, statusWarnEl, statusZoomEl, flashEl, zoomPctEl;
+let truthPanel, ttTable, ttInfo;
+let simStatusEl, simTimeEl, btnRunEl;
+
+function svgEl(tag, attrs, text) {
+  const el = document.createElementNS(NS, tag);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  if (text != null) el.textContent = text;
+  return el;
+}
+function setV(el, v) { if (el) el.setAttribute('data-v', v); }
+function labelMap() {
+  const m = new Map();
+  let si = 0, li = 0;
+  for (const c of comps) {
+    if (c.type === 'in') m.set(c.id, 'S' + (++si));
+    else if (c.type === 'out') m.set(c.id, 'L' + (++li));
+  }
+  return m;
+}
+
+function buildWireEl(w) {
+  const a = compById(w.from.id), b = compById(w.to.id);
+  if (!a || !b) return null;
+  const d = wirePathOf(w);
+  if (!d) return null;
+  /* 光晕用两层更宽的底层描边实现（不用 SVG filter：水平导线包围盒高度为 0
+   * 会导致 filter 区域塌缩、整条线被裁掉） */
+  const g = svgEl('g', { class: 'wire-g', 'data-wid': w.id });
+  g.appendChild(svgEl('path', { class: 'wire-glow g1', d }));
+  g.appendChild(svgEl('path', { class: 'wire-glow g2', d }));
+  g.appendChild(svgEl('path', { class: 'wire', d }));
+  return g;
+}
+
+const IN_LB = { dff: ['D', 'CLK'], tff: ['T', 'CLK'], jkff: ['J', 'K', 'CLK'], dlatch: ['D', 'EN'], srlatch: ['S', 'R'] };
+const OUT_LB = ['Q', 'Q̄'];
+
+function buildCompEl(c, label) {
+  const g = svgEl('g', { class: 'comp', 'data-cid': c.id, transform: 'translate(' + c.x + ' ' + c.y + ')' });
+  const color = TYPE_COLORS[c.type] || '#94a3b8';
+  const P = pinsOf(c.type);
+  const pin = (side, idx, px, py) => {
+    g.appendChild(svgEl('circle', { class: 'pin', 'data-cid': c.id, 'data-side': side, 'data-pin': idx, cx: px, cy: py, r: 5.5 / view.s }));
+    g.appendChild(svgEl('circle', { class: 'pin-hit', 'data-cid': c.id, 'data-side': side, 'data-pin': idx, cx: px, cy: py, r: 13 / view.s }));
+  };
+  const name = (t, y) => g.appendChild(svgEl('text', { class: 'cname', x: 0, y }, t));
+
+  if (c.type === 'in') {
+    g.appendChild(svgEl('rect', { class: 'sw-body', x: -24, y: -18, width: 48, height: 36, rx: 10 }));
+    g.appendChild(svgEl('text', { class: 'sw-val', x: 0, y: 5 }, '0'));
+    name(label, 36);
+    pin('out', 0, 24, 0);
+  } else if (c.type === 'out') {
+    g.appendChild(svgEl('circle', { class: 'lamp-halo', r: 22 }));
+    g.appendChild(svgEl('circle', { class: 'lamp-body', r: 15 }));
+    g.appendChild(svgEl('text', { class: 'lamp-val', x: 0, y: 5 }, '0'));
+    name(label, 36);
+    pin('in', 0, -16, 0);
+  } else if (c.type === 'clk') {
+    g.appendChild(svgEl('rect', { class: 'clk-body', x: -24, y: -20, width: 48, height: 40, rx: 10, style: 'stroke:' + color }));
+    g.appendChild(svgEl('path', { class: 'clk-wave', d: 'M -14 -2 H -8 V 8 H 8 V -2 H 14', style: 'stroke:' + color }));
+    g.appendChild(svgEl('circle', { class: 'clk-led', cx: 0, cy: -11, r: 3.5 }));
+    name('时钟 · ' + c.freq + 'Hz', 38);
+    pin('out', 0, 24, 0);
+  } else if (c.type === 'btn') {
+    g.appendChild(svgEl('circle', { class: 'btn-body', r: 17, style: 'stroke:' + color }));
+    g.appendChild(svgEl('circle', { class: 'btn-cap', r: 10 }));
+    name('按钮', 36);
+    pin('out', 0, 17, 0);
+  } else if (c.type === 'vcc') {
+    g.appendChild(svgEl('rect', { class: 'vcc-body', x: -16, y: -12, width: 32, height: 24, rx: 6, style: 'stroke:' + color }));
+    g.appendChild(svgEl('text', { class: 'vcc-txt', x: 0, y: 4.5 }, '1'));
+    name('VCC', 30);
+    pin('out', 0, 16, 0);
+  } else if (c.type === 'seg7') {
+    P.ins.forEach((p, i) => {
+      g.appendChild(svgEl('text', { class: 'pin-label', x: p.x - 5, y: p.y + 3, 'text-anchor': 'end' }, String.fromCharCode(97 + i)));
+      pin('in', i, p.x, p.y);
+    });
+    const segs = [
+      ['a', 'M -8 -18 H 8'], ['b', 'M 12 -15 V -3'], ['c', 'M 12 3 V 15'],
+      ['d', 'M -8 18 H 8'], ['e', 'M -12 3 V 15'], ['f', 'M -12 -15 V -3'],
+      ['g', 'M -8 0 H 8'],
+    ];
+    for (const [s, d] of segs) g.appendChild(svgEl('path', { class: 'seg', 'data-seg': s, d }));
+    name('数码管', 36);
+  } else if (FF_TYPES.includes(c.type)) {
+    g.appendChild(svgEl('rect', { class: 'ff-body', x: -30, y: -24, width: 60, height: 48, rx: 8, style: 'stroke:' + color }));
+    g.appendChild(svgEl('text', { class: 'ff-q', x: 0, y: 9 }, '0'));
+    P.ins.forEach((p, i) => {
+      g.appendChild(svgEl('text', { class: 'pin-label', x: p.x - 7, y: p.y + 3, 'text-anchor': 'end' }, IN_LB[c.type][i]));
+      pin('in', i, p.x, p.y);
+      if ((c.type === 'dff' || c.type === 'tff' || c.type === 'jkff') && i === CLK_PIN[c.type]) {
+        g.appendChild(svgEl('path', { class: 'edge-mark', d: 'M ' + (p.x - 5) + ' ' + (p.y - 4) + ' L ' + (p.x + 1) + ' ' + p.y + ' L ' + (p.x - 5) + ' ' + (p.y + 4) + ' Z', style: 'fill:' + color }));
+      }
+    });
+    P.outs.forEach((p, i) => {
+      g.appendChild(svgEl('text', { class: 'pin-label', x: p.x + 7, y: p.y + 3, 'text-anchor': 'start' }, OUT_LB[i]));
+      pin('out', i, p.x, p.y);
+    });
+    name(COMP_NAMES[c.type], 42);
+  } else {
+    const d = GATE_DEFS[c.type];
+    g.appendChild(svgEl('path', { class: 'gate-shape', d: d.path, style: 'stroke:' + color }));
+    if (d.extra) g.appendChild(svgEl('path', { class: 'xor-arc', d: XOR_ARC, style: 'stroke:' + color }));
+    const bx = c.type === 'not' ? 25.5 : 19.5;
+    if (d.bubble) g.appendChild(svgEl('circle', { class: 'bubble', cx: bx, cy: 0, r: 5.5, style: 'stroke:' + color }));
+    const leadFrom = d.bubble ? bx + 5.5 : 14;
+    g.appendChild(svgEl('line', { class: 'lead', x1: leadFrom, y1: 0, x2: 34, y2: 0, style: 'stroke:' + color }));
+    g.appendChild(svgEl('text', { class: 'cname', x: 0, y: 38 }, d.label));
+    if (d.ins === 1) pin('in', 0, -33, 0);
+    else { pin('in', 0, -33, -12); pin('in', 1, -33, 12); }
+    pin('out', 0, 34, 0);
+  }
+  return g;
+}
+
+function renderAll() {
+  wiresG.innerHTML = '';
+  compsG.innerHTML = '';
+  const labs = labelMap();
+  for (const w of wires) { const el = buildWireEl(w); if (el) wiresG.appendChild(el); }
+  for (const c of comps) compsG.appendChild(buildCompEl(c, labs.get(c.id) || ''));
+  updateEmptyHint();
+  renderStates();
+  refreshViewDependent();
+  updateStatus();
+}
+
+function renderStates() {
+  for (const c of comps) {
+    const g = compsG.querySelector('[data-cid="' + c.id + '"]');
+    if (!g) continue;
+    if (c.type === 'in') {
+      const v = String(c.value || 0);
+      setV(g.querySelector('.sw-body'), v);
+      const t = g.querySelector('.sw-val'); setV(t, v); t.textContent = v;
+      setV(g.querySelector('.pin[data-side="out"]'), v);
+    } else if (c.type === 'out') {
+      const w = wireInto(c.id, 0);
+      const v = w ? wireVal(w) : '0';
+      setV(g.querySelector('.lamp-halo'), v);
+      setV(g.querySelector('.lamp-body'), v);
+      const t = g.querySelector('.lamp-val'); setV(t, v); t.textContent = v === 'x' ? '?' : v;
+      setV(g.querySelector('.pin[data-side="in"]'), v);
+    } else if (c.type === 'clk') {
+      const v = String(c.level || 0);
+      setV(g.querySelector('.clk-led'), v);
+      const t = g.querySelector('.cname'); if (t) t.textContent = '时钟 · ' + c.freq + 'Hz';
+      setV(g.querySelector('.pin[data-side="out"]'), v);
+    } else if (c.type === 'btn') {
+      const v = String(c.value || 0);
+      setV(g.querySelector('.btn-cap'), v);
+      setV(g.querySelector('.btn-body'), v);
+      setV(g.querySelector('.pin[data-side="out"]'), v);
+    } else if (c.type === 'vcc') {
+      setV(g.querySelector('.pin[data-side="out"]'), '1');
+    } else if (c.type === 'seg7') {
+      for (let i = 0; i < 7; i++) {
+        const w = wireInto(c.id, i);
+        const v = w ? wireVal(w) : '0';
+        setV(g.querySelector('.seg[data-seg="' + String.fromCharCode(97 + i) + '"]'), v);
+        setV(g.querySelector('.pin[data-side="in"][data-pin="' + i + '"]'), v);
+      }
+    } else if (FF_TYPES.includes(c.type)) {
+      const P = pinsOf(c.type);
+      const qv = outPinVal(c, 0);
+      const t = g.querySelector('.ff-q'); setV(t, qv); t.textContent = qv === 'x' ? '?' : qv;
+      P.outs.forEach((p, i) => setV(g.querySelector('.pin[data-side="out"][data-pin="' + i + '"]'), outPinVal(c, i)));
+      P.ins.forEach((p, i) => {
+        const w = wireInto(c.id, i);
+        setV(g.querySelector('.pin[data-side="in"][data-pin="' + i + '"]'), w ? wireVal(w) : '0');
+      });
+    } else {
+      const d = GATE_DEFS[c.type];
+      setV(g.querySelector('.lead'), outPinVal(c, 0));
+      setV(g.querySelector('.pin[data-side="out"]'), outPinVal(c, 0));
+      for (let i = 0; i < d.ins; i++) {
+        const w = wireInto(c.id, i);
+        setV(g.querySelector('.pin[data-side="in"][data-pin="' + i + '"]'), w ? wireVal(w) : '0');
+      }
+    }
+  }
+  for (const w of wires) {
+    const el = wiresG.querySelector('[data-wid="' + w.id + '"]');
+    if (!el) continue;
+    const v = wireVal(w);
+    el.setAttribute('data-v', v);
+    const dash = v === 'x' ? (6 / view.s) + ' ' + (5 / view.s) : '';
+    for (const ch of el.children) ch.style.strokeDasharray = dash;
+  }
+}
+
+function refreshViewDependent() {
+  world.setAttribute('transform', 'translate(' + view.x + ' ' + view.y + ') scale(' + view.s + ')');
+  const pt = 'translate(' + view.x + ' ' + view.y + ') scale(' + view.s + ')';
+  minorPat.setAttribute('patternTransform', pt);
+  majorPat.setAttribute('patternTransform', pt);
+  minorRect.setAttribute('opacity', view.s < 0.55 ? 0 : 1);
+  for (const el of wiresG.querySelectorAll('.wire-g')) {
+    const dash = el.getAttribute('data-v') === 'x' ? (6 / view.s) + ' ' + (5 / view.s) : '';
+    el.querySelector('.wire').setAttribute('stroke-width', 3 / view.s);
+    el.querySelector('.wire-glow.g1').setAttribute('stroke-width', 11 / view.s);
+    el.querySelector('.wire-glow.g2').setAttribute('stroke-width', 6 / view.s);
+    for (const ch of el.children) ch.style.strokeDasharray = dash;
+  }
+  for (const el of compsG.querySelectorAll('.pin')) el.setAttribute('r', 5.5 / view.s);
+  for (const el of compsG.querySelectorAll('.pin-hit')) el.setAttribute('r', 13 / view.s);
+  updateZoom();
+}
+
+function updateEmptyHint() {
+  emptyHint.style.display = comps.length ? 'none' : '';
+}
+
+/* ---------- 状态栏 ---------- */
+function updateStatus() {
+  let m = '选择模式：拖动元件移动 · 点击开关切换 0 / 1';
+  if (mode === 'place') m = '放置模式：点击画布放置「' + ((PALETTE.find(p => p.type === placeType) || {}).name || '元件') + '」，Esc 返回选择';
+  else if (mode === 'wire') m = conn ? '连线中：请点击目标引脚（Esc 取消）' : '连线模式：点击输出引脚 → 再点击输入引脚';
+  else if (mode === 'delete') m = '删除模式：点击元件或导线将其移除';
+  statusModeEl.textContent = m;
+  simStatusEl.textContent = running ? '▶ 运行中' : '⏸ 已暂停';
+  statusInfoEl.textContent = '元件 ' + comps.length + ' · 导线 ' + wires.length;
+  const osc = wires.some(w => wireVal(w) === 'x');
+  statusWarnEl.textContent = osc ? '⚠ 检测到振荡回路（红色虚线表示）' : '';
+  const p = (simTime / TICK_RATE).toFixed(2) + 's';
+  simTimeEl.textContent = 't = ' + p;
+}
+function updateZoom() {
+  const p = Math.round(view.s * 100) + '%';
+  zoomPctEl.textContent = p;
+  statusZoomEl.textContent = p;
+}
+function setFlash(msg) {
+  flashEl.textContent = msg;
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => { flashEl.textContent = ''; }, 2600);
+}
+
+/* ---------- 变更处理 ---------- */
+function afterChange() {
+  rebuildSignals();
+  renderAll();
+  scheduleSave();
+  refreshTruth();
+}
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveState, 300);
+}
+function addComp(type, pos) {
+  comps.push(makeComp(type, pos.x, pos.y));
+  afterChange();
+}
+function delComp(cid) {
+  comps = comps.filter(c => c.id !== cid);
+  wires = wires.filter(w => w.from.id !== cid && w.to.id !== cid);
+  afterChange();
+  setFlash('已删除元件及其连线');
+}
+function delWire(wid) {
+  wires = wires.filter(w => w.id !== wid);
+  afterChange();
+  setFlash('已删除导线');
+}
+function toggleSwitch(cid) {
+  const c = compById(cid);
+  if (!c || c.type !== 'in') return;
+  setSource(c, c.value ? 0 : 1, simTime);
+  settle();
+  renderStates();
+  updateStatus();
+  scheduleSave();
+  refreshTruth();
+}
+function setButton(cid, pressed) {
+  const c = compById(cid);
+  if (!c || c.type !== 'btn') return;
+  setSource(c, pressed ? 1 : 0, simTime);
+  settle();
+  renderStates();
+  updateStatus();
+  scheduleSave();
+}
+function cycleFreq(cid) {
+  const c = compById(cid);
+  if (!c || c.type !== 'clk') return;
+  const i = CLK_FREQS.indexOf(c.freq);
+  c.freq = CLK_FREQS[(i + 1) % CLK_FREQS.length];
+  c.nextEdge = simTime + clockHalf(c);
+  renderAll();
+  setFlash('时钟频率 → ' + c.freq + 'Hz');
+  scheduleSave();
+}
+
+/* ---------- 坐标与命中 ---------- */
+function toWorld(e) {
+  const r = svg.getBoundingClientRect();
+  return { x: (e.clientX - r.left - view.x) / view.s, y: (e.clientY - r.top - view.y) / view.s };
+}
+function segDist(p, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const l2 = dx * dx + dy * dy;
+  let t = l2 ? ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2 : 0;
+  t = clamp(t, 0, 1);
+  return Math.hypot(a.x + t * dx - p.x, a.y + t * dy - p.y);
+}
+function wireNear(p) {
+  let best = null, bd = 8 / view.s;
+  for (const w of wires) {
+    const a = compById(w.from.id), b = compById(w.to.id);
+    if (!a || !b) continue;
+    const p1 = pinPos(a, 'out', w.from.pin), p2 = pinPos(b, 'in', w.to.pin);
+    if (!p1 || !p2) continue;
+    const pts = wireRoute(p1, p2, w);
+    for (let i = 0; i < pts.length - 1; i++) {
+      const d = segDist(p, pts[i], pts[i + 1]);
+      if (d < bd) { bd = d; best = w; }
+    }
+  }
+  return best;
+}
+function pinNearScreen(cx, cy) {
+  /* 入参是视口坐标（clientX/Y），需先减去画布偏移换算成画布内坐标 */
+  const r = svg.getBoundingClientRect();
+  const lx = cx - r.left, ly = cy - r.top;
+  let best = null, bd = 16;
+  for (const c of comps) {
+    const g = pinsOf(c.type);
+    const check = (side, arr) => {
+      for (let i = 0; i < arr.length; i++) {
+        const p = pinPos(c, side, i);
+        const d = Math.hypot(lx - (view.x + p.x * view.s), ly - (view.y + p.y * view.s));
+        if (d < bd) { bd = d; best = { cid: c.id, side, idx: i }; }
+      }
+    };
+    check('in', g.ins);
+    check('out', g.outs);
+  }
+  return best;
+}
+
+/* ---------- 连线 ---------- */
+function startConn(ds, p, e) {
+  conn = { cid: +ds.cid, side: ds.side, idx: +ds.pin };
+  if (svg.setPointerCapture) svg.setPointerCapture(e.pointerId);
+  setFlash(ds.side === 'out' ? '已选输出引脚，请点击目标「输入引脚」' : '已选输入引脚，请点击来源「输出引脚」');
+  updateConnPreview(p);
+  updateStatus();
+}
+function updateConnPreview(p) {
+  const c = compById(conn.cid);
+  if (!c) return;
+  const p1 = pinPos(c, conn.side, conn.idx);
+  const pts = wireRoute(p1, p, { id: 1, to: { pin: 0 } });
+  previewG.innerHTML = '';
+  previewG.appendChild(svgEl('path', {
+    class: 'wire-preview', d: routePath(pts),
+    'stroke-width': 2.5 / view.s, 'stroke-dasharray': (7 / view.s) + ' ' + (5 / view.s),
+  }));
+}
+function completeConn(e) {
+  const hit = pinNearScreen(e.clientX, e.clientY);
+  const c = conn;
+  conn = null;
+  previewG.innerHTML = '';
+  if (!hit) { setFlash('已取消连线'); updateStatus(); return; }
+  let out = null, inn = null;
+  if (c.side === 'out' && hit.side === 'in') { out = { id: c.cid, pin: c.idx }; inn = { id: hit.cid, pin: hit.idx }; }
+  else if (c.side === 'in' && hit.side === 'out') { out = { id: hit.cid, pin: hit.idx }; inn = { id: c.cid, pin: c.idx }; }
+  else { setFlash('需要连接「输出引脚」→「输入引脚」'); updateStatus(); return; }
+  if (out.id === inn.id) { setFlash('不能连接同一元件的引脚'); updateStatus(); return; }
+  const dup = wires.some(w => w.from.id === out.id && w.from.pin === out.pin && w.to.id === inn.id && w.to.pin === inn.pin);
+  if (dup) { setFlash('该连线已存在'); updateStatus(); return; }
+  const existed = wires.findIndex(w => w.to.id === inn.id && w.to.pin === inn.pin);
+  if (existed >= 0) wires.splice(existed, 1);
+  wires.push({ id: uid(), from: out, to: inn });
+  afterChange();
+  setFlash(existed >= 0 ? '已连接（替换原连线）' : '连线成功');
+}
+
+/* ---------- 指针交互 ---------- */
+function startPan(e) {
+  pan = { sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y };
+  if (svg.setPointerCapture) svg.setPointerCapture(e.pointerId);
+}
+function onDown(e) {
+  if (e.button === 1 || e.button === 2) { startPan(e); return; }
+  if (e.button !== 0) return;
+  const wpt = toWorld(e);
+  const pinEl = e.target.closest ? e.target.closest('[data-pin]') : null;
+  const compEl = e.target.closest ? e.target.closest('.comp') : null;
+
+  if (mode === 'wire') {
+    if (pinEl) startConn(pinEl.dataset, wpt, e);
+    return;
+  }
+  if (mode === 'place') {
+    if (pinEl || compEl || wireNear(wpt)) return;
+    addComp(placeType, { x: Math.round(wpt.x / 10) * 10, y: Math.round(wpt.y / 10) * 10 });
+    return;
+  }
+  if (mode === 'delete') {
+    if (pinEl || compEl) { delComp(+(pinEl ? pinEl.dataset.cid : compEl.dataset.cid)); return; }
+    const w = wireNear(wpt);
+    if (w) { delWire(w.id); return; }
+    startPan(e);
+    return;
+  }
+  /* 选择模式 */
+  if (compEl) {
+    const c = compById(+compEl.dataset.cid);
+    if (!c) return;
+    if (c.type === 'btn') { btnHeld = c.id; setButton(c.id, 1); return; }
+    drag = { cid: c.id, sx: e.clientX, sy: e.clientY, ox: c.x, oy: c.y, moved: 0 };
+    if (svg.setPointerCapture) svg.setPointerCapture(e.pointerId);
+    return;
+  }
+  if (wireNear(wpt)) return;
+  startPan(e);
+}
+function onMove(e) {
+  if (pan) {
+    view.x = pan.vx + (e.clientX - pan.sx);
+    view.y = pan.vy + (e.clientY - pan.sy);
+    refreshViewDependent();
+    return;
+  }
+  if (drag) {
+    const c = compById(drag.cid);
+    if (!c) return;
+    c.x = drag.ox + (e.clientX - drag.sx) / view.s;
+    c.y = drag.oy + (e.clientY - drag.sy) / view.s;
+    drag.moved = Math.max(drag.moved, Math.abs(e.clientX - drag.sx) + Math.abs(e.clientY - drag.sy));
+    const g = compsG.querySelector('[data-cid="' + c.id + '"]');
+    if (g) g.setAttribute('transform', 'translate(' + c.x + ' ' + c.y + ')');
+    for (const w of wiresOf(c.id)) {
+      const el = wiresG.querySelector('[data-wid="' + w.id + '"]');
+      if (el) {
+        const nd = wirePathOf(w);
+        for (const ch of el.children) ch.setAttribute('d', nd);
+      }
+    }
+    return;
+  }
+  if (conn) updateConnPreview(toWorld(e));
+}
+function onUp(e) {
+  if (pan) { pan = null; return; }
+  if (btnHeld) { setButton(btnHeld, 0); btnHeld = null; return; }
+  if (drag) {
+    const c = compById(drag.cid);
+    if (c) {
+      if (drag.moved < 5) {
+        if (c.type === 'in') toggleSwitch(c.id);
+        else if (c.type === 'clk') cycleFreq(c.id);
+      }
+    }
+    drag = null;
+    scheduleSave();
+    return;
+  }
+  if (conn) completeConn(e);
+}
+function onWheel(e) {
+  e.preventDefault();
+  const r = svg.getBoundingClientRect();
+  const px = e.clientX - r.left, py = e.clientY - r.top;
+  const wx = (px - view.x) / view.s, wy = (py - view.y) / view.s;
+  view.s = clamp(view.s * Math.exp(-e.deltaY * 0.0014), 0.4, 3.2);
+  view.x = px - wx * view.s;
+  view.y = py - wy * view.s;
+  refreshViewDependent();
+}
+function zoomBy(f) {
+  const r = svg.getBoundingClientRect();
+  const px = r.width / 2, py = r.height / 2;
+  const wx = (px - view.x) / view.s, wy = (py - view.y) / view.s;
+  view.s = clamp(view.s * f, 0.4, 3.2);
+  view.x = px - wx * view.s;
+  view.y = py - wy * view.s;
+  refreshViewDependent();
+}
+function fitContent() {
+  if (!comps.length) { view = { x: 80, y: 90, s: 1 }; refreshViewDependent(); return; }
+  let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+  for (const c of comps) {
+    x0 = Math.min(x0, c.x - 70); x1 = Math.max(x1, c.x + 70);
+    y0 = Math.min(y0, c.y - 60); y1 = Math.max(y1, c.y + 60);
+  }
+  const r = svg.getBoundingClientRect();
+  const s = clamp(Math.min((r.width - 100) / (x1 - x0), (r.height - 100) / (y1 - y0), 1.6), 0.4, 3.2);
+  view.s = s;
+  view.x = (r.width - (x0 + x1) * s) / 2;
+  view.y = (r.height - (y0 + y1) * s) / 2;
+  refreshViewDependent();
+}
+
+/* ---------- 仿真控制 ---------- */
+function setRunning(v) {
+  running = v;
+  btnRunEl.textContent = running ? '⏸ 暂停' : '▶ 运行';
+  btnRunEl.classList.toggle('on', running);
+  updateStatus();
+  scheduleSave();
+}
+function singleStep() {
+  /* 每按一次「单步」推进到下一个时钟上升沿：
+   * 电平为 0 时下一个边沿（nextEdge）就是上升沿；
+   * 电平为 1 时 nextEdge 是下降沿，需再等半个周期。 */
+  let target = Infinity;
+  for (const c of comps) {
+    if (c.type !== 'clk') continue;
+    const t = c.level === 0 ? c.nextEdge : c.nextEdge + clockHalf(c);
+    target = Math.min(target, t);
+  }
+  if (target !== Infinity) {
+    advanceTo(target);
+    settle();
+  } else {
+    settle();
+    setFlash('无时钟源：已结算组合逻辑');
+  }
+  renderStates();
+  updateStatus();
+}
+let lastTs = 0;
+function frame(ts) {
+  if (running) {
+    const dt = lastTs ? Math.min(ts - lastTs, 100) : 0;
+    if (dt > 0) {
+      advanceTo(simTime + dt * speed * TICK_RATE / 1000);
+      renderStates();
+      updateStatus();
+    }
+  }
+  lastTs = ts;
+  requestAnimationFrame(frame);
+}
+
+/* ---------- 真值表 ---------- */
+function buildTruthTable() {
+  const sws = comps.filter(c => c.type === 'in');
+  const lamps = comps.filter(c => c.type === 'out');
+  if (!sws.length || !lamps.length) {
+    ttInfo.textContent = '需要至少 1 个开关和 1 个灯泡';
+    ttTable.innerHTML = '';
+    return;
+  }
+  if (sws.length > 10) {
+    ttInfo.textContent = '开关过多（' + sws.length + ' 个），无法枚举全部组合';
+    ttTable.innerHTML = '';
+    return;
+  }
+  const n = sws.length, rows = 1 << n;
+  const labs = labelMap();
+  const saved = sws.map(c => c.value);
+  const data = [];
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < n; j++) setSource(sws[j], (i >> (n - 1 - j)) & 1, simTime);
+    settle();
+    const outs = lamps.map(l => {
+      const w = wireInto(l.id, 0);
+      return w ? wireVal(w) : '0';
+    });
+    data.push({ ins: sws.map(c => String(c.value)), outs });
+  }
+  for (let j = 0; j < n; j++) setSource(sws[j], saved[j], simTime);
+  settle();
+  renderStates();
+
+  let html = '<table class="truth"><thead><tr>';
+  for (const c of sws) html += '<th>' + labs.get(c.id) + '</th>';
+  html += '<th class="ttsep">→</th>';
+  for (const c of lamps) html += '<th>' + labs.get(c.id) + '</th>';
+  html += '</tr></thead><tbody>';
+  for (const r of data) {
+    html += '<tr>';
+    for (const v of r.ins) html += '<td class="swc v' + v + '">' + v + '</td>';
+    html += '<td class="ttsep">→</td>';
+    for (const v of r.outs) html += '<td class="v' + v + '">' + (v === 'x' ? '?' : v) + '</td>';
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  ttTable.innerHTML = html;
+  const hasSeq = comps.some(c => ['clk', 'dff', 'tff', 'jkff', 'dlatch', 'srlatch', 'btn'].includes(c.type));
+  ttInfo.textContent = sws.length + ' 个开关 · ' + rows + ' 行组合'
+    + (hasSeq ? ' · 时序电路：按当前内部状态静态结算，请用 运行/单步 观察动态行为' : '');
+}
+function refreshTruth() { if (ttOpen) buildTruthTable(); }
+function toggleTruth() {
+  ttOpen = !ttOpen;
+  truthPanel.hidden = !ttOpen;
+  document.getElementById('btnTruth').classList.toggle('active', ttOpen);
+  if (ttOpen) buildTruthTable();
+}
+
+/* ---------- 模式与面板 ---------- */
+function setMode(m) {
+  mode = m;
+  document.querySelectorAll('.tool-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === m));
+  svg.setAttribute('data-mode', m);
+  if (conn) { conn = null; previewG.innerHTML = ''; }
+  updateStatus();
+}
+
+const ICON_TEXT = { dff: 'D', tff: 'T', jkff: 'JK', dlatch: 'D', srlatch: 'SR' };
+function buildPalette() {
+  const wrap = document.getElementById('palette');
+  for (const p of PALETTE) {
+    const b = document.createElement('button');
+    b.className = 'pal-btn';
+    b.dataset.type = p.type;
+    b.title = '放置' + p.name;
+    b.style.color = TYPE_COLORS[p.type] || '#94a3b8';
+    if (p.type === 'in') {
+      b.innerHTML = '<svg class="picon" viewBox="-26 -20 52 40">'
+        + '<rect class="ic-shape" x="-19" y="-14" width="38" height="28" rx="7"/>'
+        + '<text x="0" y="4.5" text-anchor="middle" font-size="12" fill="currentColor">0/1</text>'
+        + '<line class="ic-lead" x1="19" y1="0" x2="24" y2="0"/></svg>';
+    } else if (p.type === 'out') {
+      b.innerHTML = '<svg class="picon" viewBox="-26 -20 52 40">'
+        + '<circle class="ic-shape" r="14"/>'
+        + '<circle r="6" class="ic-dot"/>'
+        + '<line class="ic-lead" x1="-14" y1="0" x2="-24" y2="0"/></svg>';
+    } else if (p.type === 'clk') {
+      b.innerHTML = '<svg class="picon" viewBox="-26 -20 52 40">'
+        + '<rect class="ic-shape" x="-17" y="-14" width="34" height="28" rx="7"/>'
+        + '<path class="ic-arc" d="M -10 -2 H -5 V 6 H 5 V -2 H 10"/>'
+        + '<line class="ic-lead" x1="17" y1="0" x2="22" y2="0"/></svg>';
+    } else if (p.type === 'btn') {
+      b.innerHTML = '<svg class="picon" viewBox="-26 -20 52 40">'
+        + '<circle class="ic-shape" r="13"/>'
+        + '<circle r="6" class="ic-dot"/>'
+        + '<line class="ic-lead" x1="13" y1="0" x2="20" y2="0"/></svg>';
+    } else if (p.type === 'vcc') {
+      b.innerHTML = '<svg class="picon" viewBox="-26 -20 52 40">'
+        + '<rect class="ic-shape" x="-14" y="-10" width="28" height="20" rx="5"/>'
+        + '<text x="0" y="4" text-anchor="middle" font-size="11" fill="currentColor">1</text>'
+        + '<line class="ic-lead" x1="14" y1="0" x2="20" y2="0"/></svg>';
+    } else if (p.type === 'seg7') {
+      b.innerHTML = '<svg class="picon" viewBox="-26 -20 52 40">'
+        + '<path class="ic-arc" d="M -8 -12 H 8 M 10 -10 V -3 M 10 3 V 10 M -8 12 H 8 M -10 3 V 10 M -10 -10 V -3 M -8 0 H 8"/></svg>';
+    } else if (FF_TYPES.includes(p.type)) {
+      b.innerHTML = '<svg class="picon" viewBox="-34 -26 68 52">'
+        + '<rect class="ic-shape" x="-24" y="-18" width="48" height="36" rx="6"/>'
+        + '<text x="0" y="-2" text-anchor="middle" font-size="12" fill="currentColor">' + ICON_TEXT[p.type] + '</text></svg>';
+    } else {
+      const d = GATE_DEFS[p.type];
+      const bx = p.type === 'not' ? 25.5 : 19.5;
+      let s = '<svg class="picon" viewBox="-42 -28 84 56">';
+      s += '<path class="ic-shape" d="' + d.path + '"/>';
+      if (d.extra) s += '<path class="ic-arc" d="' + XOR_ARC + '"/>';
+      if (d.bubble) s += '<circle class="ic-bubble" cx="' + bx + '" cy="0" r="5.5"/>';
+      s += '<line class="ic-lead" x1="' + (d.bubble ? bx + 5.5 : 14) + '" y1="0" x2="34" y2="0"/>';
+      s += '</svg>';
+      b.innerHTML = s;
+    }
+    b.innerHTML += '<span>' + p.name + '</span>';
+    b.addEventListener('click', () => {
+      if (mode === 'place' && placeType === p.type) setMode('select');
+      else { placeType = p.type; setMode('place'); }
+    });
+    wrap.appendChild(b);
+  }
+}
+
+/* ---------- 初始化 ---------- */
+function init() {
+  svg = document.getElementById('canvas');
+  world = document.getElementById('world');
+  wiresG = document.getElementById('wires');
+  compsG = document.getElementById('comps');
+  previewG = document.getElementById('previewG');
+  minorPat = document.getElementById('gridMinor');
+  majorPat = document.getElementById('gridMajor');
+  minorRect = document.getElementById('gridMinorRect');
+  emptyHint = document.getElementById('emptyHint');
+  statusModeEl = document.getElementById('statusMode');
+  statusInfoEl = document.getElementById('statusInfo');
+  statusWarnEl = document.getElementById('statusWarn');
+  statusZoomEl = document.getElementById('statusZoom');
+  flashEl = document.getElementById('flashEl');
+  zoomPctEl = document.getElementById('zoomPct');
+  truthPanel = document.getElementById('truthPanel');
+  ttTable = document.getElementById('ttTable');
+  ttInfo = document.getElementById('ttInfo');
+  simStatusEl = document.getElementById('simStatus');
+  simTimeEl = document.getElementById('simTimeEl');
+  btnRunEl = document.getElementById('btnRun');
+
+  buildPalette();
+
+  document.querySelectorAll('.tool-btn').forEach(b =>
+    b.addEventListener('click', () => setMode(b.dataset.mode)));
+  document.getElementById('btnTruth').addEventListener('click', toggleTruth);
+  document.getElementById('btnTruthClose').addEventListener('click', toggleTruth);
+  document.getElementById('btnFit').addEventListener('click', fitContent);
+  document.getElementById('btnFit2').addEventListener('click', fitContent);
+  document.getElementById('btnClear').addEventListener('click', () => {
+    comps = [];
+    wires = [];
+    conn = null;
+    btnHeld = null;
+    previewG.innerHTML = '';
+    afterChange();
+    setFlash('已清空画布');
+  });
+  document.getElementById('zoomIn').addEventListener('click', () => zoomBy(1.25));
+  document.getElementById('zoomOut').addEventListener('click', () => zoomBy(0.8));
+  document.getElementById('exampleSel').addEventListener('change', e => {
+    loadExample(e.target.value);
+    afterChange();
+    fitContent();
+    setFlash('已载入示例：' + e.target.selectedOptions[0].text);
+  });
+  btnRunEl.addEventListener('click', () => setRunning(!running));
+  document.getElementById('btnStep').addEventListener('click', singleStep);
+  document.getElementById('speedSel').addEventListener('change', e => {
+    speed = parseFloat(e.target.value) || 1;
+    scheduleSave();
+  });
+
+  svg.addEventListener('pointerdown', onDown);
+  svg.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
+  svg.addEventListener('wheel', onWheel, { passive: false });
+  svg.addEventListener('contextmenu', e => e.preventDefault());
+  window.addEventListener('keydown', e => {
+    if (e.isComposing) return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return;
+    const k = e.key.toLowerCase();
+    if (k === 'v') setMode('select');
+    else if (k === 'w') setMode('wire');
+    else if (k === 'd') setMode('delete');
+    else if (k === 't') toggleTruth();
+    else if (k === 'f') fitContent();
+    else if (k === 's') singleStep();
+    else if (k === 'escape') setMode('select');
+    else if (k === ' ') { e.preventDefault(); setRunning(!running); }
+  });
+
+  const saved = loadState();
+  if (saved) {
+    comps = saved.comps.map(c => {
+      if (c.type === 'clk') { c.freq = c.freq || 2; c.level = c.level || 0; c.nextEdge = clockHalf(c); }
+      if (FF_TYPES.includes(c.type)) {
+        if (c.type === 'srlatch') c.state = c.state || { q: 0, qn: 1 };
+        else c.state = c.state || { q: 0, prev: 0 };
+      }
+      return c;
+    });
+    wires = saved.wires;
+    view = saved.view && typeof saved.view.s === 'number' ? saved.view : { x: 80, y: 90, s: 1 };
+    speed = typeof saved.speed === 'number' ? saved.speed : 1;
+    simTime = typeof saved.simTime === 'number' ? saved.simTime : 0;
+    idSeq = Math.max(1, ...comps.map(c => c.id || 0), ...wires.map(w => w.id || 0)) + 1;
+    document.getElementById('speedSel').value = String(speed);
+    afterChange();
+  } else {
+    loadExample('half');
+    afterChange();
+    fitContent();
+    setFlash('欢迎！已载入示例「半加器」，试试点击开关切换电平');
+  }
+  setMode('select');
+  setRunning(false);
+  requestAnimationFrame(frame);
+}
+
+if (typeof document !== 'undefined') init();
+</script>
+</body>
+</html>

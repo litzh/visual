@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>闭合曲线圆形度评分器</title>
+<style>
+  :root {
+    --blue: #2563eb;
+    --green: #16a34a;
+    --purple: #7c3aed;
+    --orange: #ea580c;
+    --ink: #0f172a;
+    --muted: #64748b;
+    --panel: #ffffff;
+    --line: #e2e8f0;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: var(--ink);
+    background:
+      radial-gradient(1200px 600px at 85% -10%, #dbeafe 0%, transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, #fce7f3 0%, transparent 55%),
+      linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+    padding: 28px 18px 48px;
+  }
+
+  .app {
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  header { text-align: center; margin-bottom: 18px; }
+  h1 {
+    margin: 0 0 8px;
+    font-size: clamp(24px, 4vw, 34px);
+    letter-spacing: .02em;
+  }
+  .subtitle { color: var(--muted); margin: 0; font-size: 14px; line-height: 1.7; }
+
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 340px;
+    gap: 20px;
+    align-items: start;
+  }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid rgba(148, 163, 184, .35);
+    border-radius: 18px;
+    box-shadow: 0 18px 40px -28px rgba(15, 23, 42, .45);
+    padding: 18px;
+  }
+
+  .canvas-card { padding: 14px; }
+
+  .canvas-wrap { position: relative; }
+  canvas {
+    display: block;
+    width: 100%;
+    height: clamp(340px, 58vh, 520px);
+    border-radius: 12px;
+    cursor: crosshair;
+    touch-action: none;
+    background: #ffffff;
+    box-shadow: inset 0 0 0 1px rgba(148, 163, 184, .28);
+  }
+
+  .hint {
+    margin-top: 10px;
+    min-height: 22px;
+    font-size: 13px;
+    color: var(--muted);
+    text-align: center;
+  }
+  .hint.warn { color: var(--orange); }
+  .hint.ok { color: var(--green); }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    justify-content: center;
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 18px; height: 0; border-top: 3px solid var(--c, #000); border-radius: 2px; display: inline-block; }
+  .legend i.dash { border-top-style: dashed; }
+
+  .actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 14px; }
+  button {
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    color: var(--ink);
+    padding: 10px 18px;
+    border-radius: 999px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
+    box-shadow: 0 8px 18px -14px rgba(15, 23, 42, .7);
+  }
+  button:hover { transform: translateY(-1px); box-shadow: 0 10px 20px -12px rgba(15, 23, 42, .6); }
+  button:active { transform: translateY(0); }
+  button.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+  button.ghost:hover { background: #f8fafc; }
+
+  /* ---------- Result panel ---------- */
+  .result-panel { position: sticky; top: 14px; }
+
+  .score-head { display: flex; align-items: center; gap: 16px; margin-bottom: 6px; }
+  .score-ring {
+    --p: 0;
+    --score-color: var(--green);
+    width: 104px;
+    height: 104px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: conic-gradient(var(--score-color) calc(var(--p) * 1%), #e8edf4 0);
+    transition: background .25s ease;
+  }
+  .score-ring::before {
+    content: "";
+    grid-area: 1 / 1;
+    width: 82px;
+    height: 82px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: inset 0 0 0 1px #e8edf4;
+  }
+  .score-ring > div {
+    grid-area: 1 / 1;
+    text-align: center;
+    z-index: 1;
+  }
+  .score-ring b { font-size: 25px; letter-spacing: .01em; }
+  .score-ring small { display: block; color: var(--muted); font-size: 11px; margin-top: 1px; }
+
+  .grade {
+    font-size: 15px;
+    font-weight: 700;
+    margin: 2px 0 3px;
+  }
+  .feedback { color: var(--muted); font-size: 13px; line-height: 1.65; margin: 0; }
+  .stars { color: #f59e0b; letter-spacing: 2px; font-size: 16px; }
+
+  .metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 16px;
+  }
+  .metric {
+    background: #f8fafc;
+    border: 1px solid #e8edf4;
+    border-radius: 12px;
+    padding: 10px 12px;
+  }
+  .metric span { display: block; color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+  .metric b { font-size: 17px; }
+  .metric b em { font-style: normal; font-size: 11px; color: var(--muted); font-weight: 500; margin-left: 3px; }
+  .metric.highlight { background: #eff6ff; border-color: #bfdbfe; }
+
+  .formula {
+    margin: 14px 0 0;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    color: #92400e;
+    font-size: 12px;
+    line-height: 1.75;
+  }
+  .formula code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+  .placeholder { color: #94a3b8; text-align: center; padding: 40px 10px; font-size: 13px; line-height: 2; }
+
+  @media (max-width: 820px) {
+    .layout { grid-template-columns: 1fr; }
+    .result-panel { position: static; }
+    .score-head { justify-content: center; }
+  }
+</style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>⭕ 闭合曲线圆形度评分器</h1>
+      <p class="subtitle">
+        按住鼠标（或手指）画一条<b>闭合曲线</b>，松开后自动评分。
+        曲线未回到起点时会自动补一条闭合线。
+      </p>
+    </header>
+
+    <div class="layout">
+      <section class="card canvas-card">
+        <div class="canvas-wrap">
+          <canvas id="drawCanvas"></canvas>
+        </div>
+        <p class="hint" id="hint">从任意位置按下并拖动，画出闭合曲线；建议起笔和收笔靠近一些。</p>
+        <div class="legend">
+          <span><i style="--c:#2563eb"></i>你画的曲线</span>
+          <span><i class="dash" style="--c:#ea580c"></i>自动闭合线段</span>
+          <span><i style="--c:#16a34a"></i>最大内接圆</span>
+          <span><i class="dash" style="--c:#7c3aed"></i>最小外接圆</span>
+        </div>
+        <div class="actions">
+          <button id="closeBtn" class="primary">闭合并评分</button>
+          <button id="clearBtn" class="ghost">清除重画</button>
+        </div>
+      </section>
+
+      <aside class="card result-panel">
+        <div id="resultPlaceholder" class="placeholder">
+          还没有评分结果。<br>画完一条闭合曲线后，<br>这里会显示长度、半径比和相似度。
+        </div>
+
+        <div id="resultContent" style="display:none">
+          <div class="score-head">
+            <div class="score-ring" id="scoreRing">
+              <div>
+                <b id="scoreValue">0</b>
+                <small>相似度得分</small>
+              </div>
+            </div>
+            <div>
+              <div class="grade" id="gradeText">—</div>
+              <div class="stars" id="starText">☆☆☆☆☆</div>
+              <p class="feedback" id="feedbackText"></p>
+            </div>
+          </div>
+
+          <div class="metrics">
+            <div class="metric"><span>曲线长度 P</span><b id="mPerimeter">—</b></div>
+            <div class="metric"><span>包围面积 A</span><b id="mArea">—</b></div>
+            <div class="metric"><span>内接圆半径 r</span><b id="mInnerR">—</b></div>
+            <div class="metric"><span>外接圆半径 R</span><b id="mOuterR">—</b></div>
+            <div class="metric highlight"><span>半径比 r / R</span><b id="mRatio">—</b></div>
+            <div class="metric highlight"><span>等周圆形度</span><b id="mCircularity">—</b></div>
+          </div>
+
+          <p class="formula">
+            <b>评分公式</b><br>
+            <code>圆形度 = 4πA / P²</code>（标准圆为 1）<br>
+            <code>相似度得分 = 100 × √( (r/R) × 圆形度 )</code><br>
+            内接圆为<b>区域内最大内切圆</b>，外接圆为<b>最小包围圆</b>。
+          </p>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ================= DOM ================= */
+  var canvas = document.getElementById("drawCanvas");
+  var ctx = canvas.getContext("2d");
+  var hintEl = document.getElementById("hint");
+  var placeholder = document.getElementById("resultPlaceholder");
+  var resultContent = document.getElementById("resultContent");
+
+  var scoreRing = document.getElementById("scoreRing");
+  var scoreValue = document.getElementById("scoreValue");
+  var gradeText = document.getElementById("gradeText");
+  var starText = document.getElementById("starText");
+  var feedbackText = document.getElementById("feedbackText");
+
+  var mPerimeter = document.getElementById("mPerimeter");
+  var mArea = document.getElementById("mArea");
+  var mInnerR = document.getElementById("mInnerR");
+  var mOuterR = document.getElementById("mOuterR");
+  var mRatio = document.getElementById("mRatio");
+  var mCircularity = document.getElementById("mCircularity");
+
+  /* ================= 状态 ================= */
+  var W = 0, H = 0;           // canvas CSS 像素尺寸
+  var drawing = false;
+  var points = [];            // 用户原始轨迹点
+  var lastPointer = null;
+  var result = null;          // { poly, autoClosed, closeGap, geo }
+
+  var CLOSE_TOLERANCE = 18;   // 距起点小于该值视为用户主动闭合
+  var MIN_POINT_DIST = 1.6;   // 采样最小间距（px）
+  var MAX_POINTS = 12000;
+
+  /* ================= 画布尺寸与坐标 ================= */
+  function resizeCanvas() {
+    var rect = canvas.getBoundingClientRect();
+    if (rect.width < 2 || rect.height < 2) return;
+    var dpr = window.devicePixelRatio || 1;
+    W = rect.width;
+    H = rect.height;
+    canvas.width = Math.round(rect.width * dpr);
+    canvas.height = Math.round(rect.height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    draw();
+  }
+  window.addEventListener("resize", resizeCanvas);
+  window.addEventListener("load", function () { requestAnimationFrame(resizeCanvas); });
+
+  function getPos(e) {
+    var rect = canvas.getBoundingClientRect();
+    return {
+      x: (e.clientX - rect.left) * (W / rect.width),
+      y: (e.clientY - rect.top) * (H / rect.height)
+    };
+  }
+
+  /* ================= 基础几何 ================= */
+  function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+  function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+  function normalizePolygon(poly) {
+    if (poly.length > 1 && dist(poly[0], poly[poly.length - 1]) < 1e-9) {
+      return poly.slice(0, -1);
+    }
+    return poly.slice();
+  }
+
+  function polygonPerimeter(poly) {
+    var n = poly.length, sum = 0;
+    for (var i = 0; i < n; i++) {
+      var j = (i + 1) % n;
+      sum += dist(poly[i], poly[j]);
+    }
+    return sum;
+  }
+
+  function polygonArea(poly) {
+    var n = poly.length, s = 0;
+    for (var i = 0; i < n; i++) {
+      var j = (i + 1) % n;
+      s += poly[i].x * poly[j].y - poly[j].x * poly[i].y;
+    }
+    return Math.abs(s / 2);
+  }
+
+  function polygonCentroid(poly) {
+    var n = poly.length, cx = 0, cy = 0;
+    for (var i = 0; i < n; i++) { cx += poly[i].x; cy += poly[i].y; }
+    return { x: cx / n, y: cy / n };
+  }
+
+  // 把闭合多边形按弧长等距重采样为 count 个点（首尾不重复）
+  function resampleClosed(poly, count) {
+    var pts = normalizePolygon(poly);
+    var n = pts.length;
+    if (n < 3 || count <= 0) return pts.slice();
+
+    var lens = new Array(n), total = 0;
+    for (var i = 0; i < n; i++) {
+      lens[i] = dist(pts[i], pts[(i + 1) % n]);
+      total += lens[i];
+    }
+    if (total <= 1e-12) return pts.slice();
+
+    var out = new Array(count);
+    var edge = 0, acc = 0;
+    for (var k = 0; k < count; k++) {
+      var target = (k / count) * total;
+      while (acc + lens[edge] < target - 1e-12 && edge < n + 1) {
+        acc += lens[edge];
+        edge = (edge + 1) % n;
+      }
+      var a = pts[edge], b = pts[(edge + 1) % n];
+      var t = lens[edge] > 1e-12 ? (target - acc) / lens[edge] : 0;
+      out[k] = {
+        x: a.x + (b.x - a.x) * t,
+        y: a.y + (b.y - a.y) * t
+      };
+    }
+    return out;
+  }
+
+  function pointInPolygon(poly, x, y) {
+    var inside = false;
+    for (var i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      var yi = poly[i].y, yj = poly[j].y;
+      if ((yi > y) !== (yj > y)) {
+        var xInt = (poly[j].x - poly[i].x) * (y - yi) / (yj - yi) + poly[i].x;
+        if (x < xInt) inside = !inside;
+      }
+    }
+    return inside;
+  }
+
+  // 点到边界折线的最小距离；当距离已经小于 stop 时提前返回（不再可能更优）
+  function minDistToEdges(edges, x, y, stop) {
+    var min = Infinity;
+    for (var i = 0; i < edges.length; i++) {
+      var a = edges[i], b = edges[(i + 1) % edges.length];
+      var dx = b.x - a.x, dy = b.y - a.y;
+      var lenSq = dx * dx + dy * dy;
+      var t = 0;
+      if (lenSq > 1e-12) {
+        t = ((x - a.x) * dx + (y - a.y) * dy) / lenSq;
+        t = clamp(t, 0, 1);
+      }
+      var px = a.x + t * dx, py = a.y + t * dy;
+      var d = Math.hypot(x - px, y - py);
+      if (d < min) {
+        min = d;
+        if (min <= stop) return min;
+      }
+    }
+    return min;
+  }
+
+  // 近似求解：多边形内部的最大内切圆（粗网格搜索 + 局部细化）
+  function largestInscribedCircle(insidePoly, edges) {
+    var n = insidePoly.length;
+    if (n < 3) return { x: 0, y: 0, r: 0 };
+
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (var i = 0; i < n; i++) {
+      var p = insidePoly[i];
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.y > maxY) maxY = p.y;
+    }
+
+    var best = { x: (minX + maxX) / 2, y: (minY + maxY) / 2, r: 0 };
+    var steps = 46;
+    var stepX = (maxX - minX) / steps;
+    var stepY = (maxY - minY) / steps;
+    if (stepX <= 0) stepX = 1;
+    if (stepY <= 0) stepY = 1;
+
+    for (var iy = 0; iy <= steps; iy++) {
+      var y = minY + iy * stepY;
+      for (var ix = 0; ix <= steps; ix++) {
+        var x = minX + ix * stepX;
+        if (!pointInPolygon(insidePoly, x, y)) continue;
+        var d = minDistToEdges(edges, x, y, best.r);
+        if (d > best.r) best = { x: x, y: y, r: d };
+      }
+    }
+
+    if (best.r <= 0) return best;
+
+    var step = Math.max(stepX, stepY);
+    for (var iter = 0; iter < 26 && step > 0.02; iter++) {
+      var improved = false;
+      for (var oy = -1; oy <= 1; oy++) {
+        for (var ox = -1; ox <= 1; ox++) {
+          if (ox === 0 && oy === 0) continue;
+          var nx = best.x + ox * step;
+          var ny = best.y + oy * step;
+          if (nx < minX - step || nx > maxX + step || ny < minY - step || ny > maxY + step) continue;
+          if (!pointInPolygon(insidePoly, nx, ny)) continue;
+          var nd = minDistToEdges(edges, nx, ny, best.r);
+          if (nd > best.r) {
+            best = { x: nx, y: ny, r: nd };
+            improved = true;
+          }
+        }
+      }
+      step *= improved ? 0.72 : 0.5;
+    }
+    return best;
+  }
+
+  /* ================= 最小外接圆（Welzl） ================= */
+  function circleFrom2(a, b) {
+    return {
+      x: (a.x + b.x) / 2,
+      y: (a.y + b.y) / 2,
+      r: dist(a, b) / 2
+    };
+  }
+
+  function farthestPairCircle(a, b, c) {
+    var pairs = [[a, b], [a, c], [b, c]];
+    var best = circleFrom2(a, b);
+    for (var i = 0; i < pairs.length; i++) {
+      var c2 = circleFrom2(pairs[i][0], pairs[i][1]);
+      if (c2.r > best.r) best = c2;
+    }
+    return best;
+  }
+
+  function circleFrom3(a, b, c) {
+    var d = 2 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y));
+    if (Math.abs(d) < 1e-12) return farthestPairCircle(a, b, c);
+    var a2 = a.x * a.x + a.y * a.y;
+    var b2 = b.x * b.x + b.y * b.y;
+    var c2 = c.x * c.x + c.y * c.y;
+    var x = (a2 * (b.y - c.y) + b2 * (c.y - a.y) + c2 * (a.y - b.y)) / d;
+    var y = (a2 * (c.x - b.x) + b2 * (a.x - c.x) + c2 * (b.x - a.x)) / d;
+    return { x: x, y: y, r: Math.hypot(x - a.x, y - a.y) };
+  }
+
+  function circleContains(c, p) {
+    return Math.hypot(p.x - c.x, p.y - c.y) <= c.r + 1e-7;
+  }
+
+  function smallestEnclosingCircle(points) {
+    if (points.length === 0) return { x: 0, y: 0, r: 0 };
+
+    var arr = points.slice();
+    // 随机打乱，随机增量算法期望线性时间，且不会递归过深
+    for (var i = arr.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+    }
+
+    var c = { x: arr[0].x, y: arr[0].y, r: 0 };
+    for (var i = 1; i < arr.length; i++) {
+      if (circleContains(c, arr[i])) continue;
+
+      c = { x: arr[i].x, y: arr[i].y, r: 0 };
+      for (var j2 = 0; j2 < i; j2++) {
+        if (circleContains(c, arr[j2])) continue;
+
+        c = circleFrom2(arr[i], arr[j2]);
+        for (var k = 0; k < j2; k++) {
+          if (circleContains(c, arr[k])) continue;
+          c = circleFrom3(arr[i], arr[j2], arr[k]);
+        }
+      }
+    }
+    return c;
+  }
+
+  /* ================= 自交检测（近似） ================= */
+  function orient(a, b, c) {
+    return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+  }
+
+  function segmentsProperlyIntersect(a, b, c, d) {
+    var o1 = orient(a, b, c);
+    var o2 = orient(a, b, d);
+    var o3 = orient(c, d, a);
+    var o4 = orient(c, d, b);
+    return (o1 * o2 < -1e-9) && (o3 * o4 < -1e-9);
+  }
+
+  function polygonSelfIntersects(poly) {
+    var n = poly.length;
+    if (n < 4) return false;
+    for (var i = 0; i < n; i++) {
+      var a = poly[i], b = poly[(i + 1) % n];
+      for (var j = i + 1; j < n; j++) {
+        if (j === i + 1 || (i === 0 && j === n - 1)) continue; // 相邻边共享端点
+        if (segmentsProperlyIntersect(a, b, poly[j], poly[(j + 1) % n])) return true;
+      }
+    }
+    return false;
+  }
+
+  /* ================= 主计算 ================= */
+  function computeGeometry(poly) {
+    var pts = normalizePolygon(poly);
+    var n = pts.length;
+    if (n < 3) return null;
+
+    var P = polygonPerimeter(pts);
+    var A = polygonArea(pts);
+    if (P < 3 || A < 2) return null;
+
+    // 外接圆：直接使用用户顶点（Welzl 随机增量算法）
+    var circ = smallestEnclosingCircle(pts);
+    var R = circ.r;
+    if (!(R > 0)) return null;
+
+    // 内接圆：在等距重采样后的多边形内部搜索最大空圆
+    var insidePoly = resampleClosed(pts, Math.max(24, Math.min(320, n)));
+    var edges = resampleClosed(pts, Math.max(48, Math.min(640, Math.max(48, Math.round(P / 2)))));
+    var inner = largestInscribedCircle(insidePoly, edges);
+    var r = inner.r;
+
+    // 兜底：若网格搜索失败，用质心到边界的距离
+    if (!(r > 0)) {
+      var c = polygonCentroid(pts);
+      r = minDistToEdges(edges, c.x, c.y, Infinity);
+    }
+
+    var ratio = clamp(r / R, 0, 1);
+    var circularity = clamp((4 * Math.PI * A) / (P * P), 0, 1);
+    var score = Math.round(1000 * Math.sqrt(ratio * circularity)) / 10;
+
+    var selfCross = polygonSelfIntersects(
+      n <= 220 ? pts : resampleClosed(pts, 220)
+    );
+
+    return {
+      P: P, A: A,
+      r: r, R: R,
+      innerCenter: inner,
+      outerCenter: circ,
+      ratio: ratio,
+      circularity: circularity,
+      score: score,
+      selfCross: selfCross
+    };
+  }
+
+  function gradeOf(score) {
+    if (score >= 95) return "S · 几乎就是标准圆";
+    if (score >= 85) return "A · 非常接近圆";
+    if (score >= 72) return "B · 比较接近圆";
+    if (score >= 55) return "C · 与圆有明显差距";
+    return "D · 基本不像圆";
+  }
+
+  function scoreColor(score) {
+    if (score >= 85) return "#16a34a";
+    if (score >= 70) return "#65a30d";
+    if (score >= 55) return "#f59e0b";
+    return "#ef4444";
+  }
+
+  function starsOf(score) {
+    var filled = Math.round(score / 20);
+    var out = "";
+    for (var i = 0; i < 5; i++) out += i < filled ? "★" : "☆";
+    return out;
+  }
+
+  /* ================= 绘制 ================= */
+  function drawBackground() {
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.strokeStyle = "#eef2f7";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (var x = 0.5; x < W; x += 40) { ctx.moveTo(x, 0); ctx.lineTo(x, H); }
+    for (var y = 0.5; y < H; y += 40) { ctx.moveTo(0, y); ctx.lineTo(W, y); }
+    ctx.stroke();
+  }
+
+  function tracePath(pts) {
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (var i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  }
+
+  function drawStartMarker(p) {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 5.5, 0, Math.PI * 2);
+    ctx.fillStyle = "#16a34a";
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#ffffff";
+    ctx.stroke();
+  }
+
+  function drawPolygon(poly, fill) {
+    tracePath(poly);
+    ctx.closePath();
+    if (fill) {
+      ctx.fillStyle = "rgba(37, 99, 235, 0.07)";
+      ctx.fill("evenodd");
+    }
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#2563eb";
+    ctx.stroke();
+  }
+
+  function drawCircle(c, color, dash) {
+    if (!(c && c.r > 0)) return;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+    ctx.setLineDash(dash ? [7, 6] : []);
+    ctx.lineWidth = 1.8;
+    ctx.strokeStyle = color;
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, 2.6, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    if (W < 2 || H < 2) return;
+    drawBackground();
+
+    // 绘制已完成的曲线与评分辅助圆
+    if (result) {
+      drawPolygon(result.poly, true);
+      drawStartMarker(result.poly[0]);
+
+      if (result.autoClosed && result.closeGap > 2) {
+        var a = result.poly[result.poly.length - 2];
+        var b = result.poly[result.poly.length - 1];
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.setLineDash([8, 7]);
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "#ea580c";
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      drawCircle(result.geo.outerCenter, "#7c3aed", true);
+      drawCircle(result.geo.innerCenter, "#16a34a", false);
+      return;
+    }
+
+    // 绘制进行中的轨迹
+    if (points.length > 1) {
+      tracePath(points);
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "#2563eb";
+      ctx.stroke();
+      drawStartMarker(points[0]);
+    } else if (points.length === 1) {
+      drawStartMarker(points[0]);
+    }
+
+    if (drawing && points.length && lastPointer) {
+      var lastPt = points[points.length - 1];
+      ctx.beginPath();
+      ctx.moveTo(lastPt.x, lastPt.y);
+      ctx.lineTo(lastPointer.x, lastPointer.y);
+      ctx.setLineDash([5, 5]);
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "rgba(37, 99, 235, 0.55)";
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  /* ================= UI ================= */
+  function setHint(msg, cls) {
+    hintEl.textContent = msg;
+    hintEl.className = "hint" + (cls ? " " + cls : "");
+  }
+
+  function resetResultUI() {
+    result = null;
+    placeholder.style.display = "block";
+    resultContent.style.display = "none";
+  }
+
+  function renderResult(res) {
+    var g = res.geo;
+    placeholder.style.display = "none";
+    resultContent.style.display = "block";
+
+    mPerimeter.textContent = g.P.toFixed(1) + " px";
+    mArea.textContent = Math.round(g.A) + " px²";
+    mInnerR.textContent = g.r.toFixed(1) + " px";
+    mOuterR.textContent = g.R.toFixed(1) + " px";
+    mRatio.textContent = g.ratio.toFixed(4) + " (圆为 1)";
+    mCircularity.textContent = (g.circularity * 100).toFixed(1) + "% (圆为 100%)";
+
+    scoreRing.style.setProperty("--p", String(g.score));
+    scoreRing.style.setProperty("--score-color", scoreColor(g.score));
+    scoreValue.textContent = g.score >= 99.95 ? "100" : g.score.toFixed(1);
+    gradeText.textContent = gradeOf(g.score);
+    starText.textContent = starsOf(g.score);
+
+    var fb = "";
+    if (g.selfCross) {
+      fb = "⚠️ 曲线存在自交，内接圆按奇偶填充区域近似，结果仅供参考。";
+    } else if (g.ratio >= 0.95) {
+      fb = "内、外圆半径几乎一致，是非常标准的圆形。";
+    } else if (g.ratio >= 0.8) {
+      fb = "内外半径比较接近，整体接近圆形。";
+    } else {
+      fb = "内外半径差距较大，离标准圆还有距离。";
+    }
+    feedbackText.textContent = fb;
+  }
+
+  function clearAll() {
+    points = [];
+    lastPointer = null;
+    drawing = false;
+    resetResultUI();
+    setHint("已清空。按住鼠标拖动，重新画一条闭合曲线吧。");
+    draw();
+  }
+
+  /* ================= 交互 ================= */
+  function beginStroke(e) {
+    e.preventDefault();
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+
+    // 新画一笔时清掉旧结果
+    points = [];
+    lastPointer = null;
+    drawing = true;
+    if (result) resetResultUI();
+
+    points.push(getPos(e));
+    setHint("正在绘制…松开鼠标后自动闭合并评分。");
+    draw();
+  }
+
+  function moveStroke(e) {
+    if (!drawing) return;
+    e.preventDefault();
+    var p = getPos(e);
+    lastPointer = p;
+
+    var last = points[points.length - 1];
+    if (dist(p, last) >= MIN_POINT_DIST) {
+      if (points.length < MAX_POINTS) {
+        points.push({ x: p.x, y: p.y });
+      } else {
+        setHint("轨迹点太多啦，请松开手指查看结果或点击清除重画。", "warn");
+      }
+    }
+    draw();
+  }
+
+  function endStroke(e) {
+    if (!drawing) return;
+    drawing = false;
+    lastPointer = null;
+    finishCurve();
+  }
+
+  function finishCurve() {
+    if (points.length < 3) {
+      setHint("至少需要 3 个点才能围成区域。请重新画一条更大的闭合曲线。", "warn");
+      draw();
+      return;
+    }
+
+    var first = points[0];
+    var last = points[points.length - 1];
+    var gap = dist(first, last);
+
+    // 构造闭合多边形：端点未重合时补一条回到起点的线段
+    var closed = points.slice();
+    if (gap > 0.5) closed.push({ x: first.x, y: first.y });
+
+    var geo = computeGeometry(closed);
+    if (!geo) {
+      setHint("曲线太细或面积太小，无法评分。请画一条更大、更饱满的闭合曲线。", "warn");
+      draw();
+      return;
+    }
+
+    result = {
+      poly: closed,
+      autoClosed: gap > CLOSE_TOLERANCE,
+      closeGap: gap,
+      geo: geo
+    };
+
+    draw();
+    renderResult(result);
+
+    if (result.autoClosed) {
+      setHint("曲线未回到起点，已自动补一条闭合线段并完成评分。", "ok");
+    } else {
+      setHint("曲线已闭合，评分完成！可继续在画布上画新曲线。", "ok");
+    }
+  }
+
+  canvas.addEventListener("pointerdown", beginStroke);
+  canvas.addEventListener("pointermove", moveStroke);
+  canvas.addEventListener("pointerup", endStroke);
+  canvas.addEventListener("pointercancel", endStroke);
+  canvas.addEventListener("lostpointercapture", function (e) {
+    if (drawing) endStroke(e);
+  });
+
+  document.getElementById("clearBtn").addEventListener("click", clearAll);
+  document.getElementById("closeBtn").addEventListener("click", function () {
+    if (drawing) { drawing = false; lastPointer = null; }
+    finishCurve();
+  });
+
+  // 初次布局
+  resizeCanvas();
+})();
+</script>
+</body>
+</html>

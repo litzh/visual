@@ -1,0 +1,58 @@
+name: Build & Deploy Pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OpenSCAD
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openscad
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      # openscad 的 CGAL 渲染结果磁盘缓存，scad 文件不变时直接命中
+      - name: Cache OpenSCAD render cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/OpenSCAD
+          key: openscad-${{ hashFiles('scad/*.scad') }}
+          restore-keys: openscad-
+
+      - name: Convert SCAD -> GLB + thumbnails
+        run: uv run scad/convert.py
+
+      - name: Build site pages
+        run: uv run tools/build_index.py
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

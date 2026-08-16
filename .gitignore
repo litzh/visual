@@ -1,0 +1,5 @@
+.DS_Store
+_site/
+scad/dist/
+scad/*.stl
+__pycache__/

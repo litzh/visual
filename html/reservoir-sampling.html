@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>蓄水池抽样算法可视化 · Reservoir Sampling</title>
+<style>
+  :root {
+    --bg: #f1f5f9;
+    --card: #ffffff;
+    --text: #0f172a;
+    --muted: #64748b;
+    --line: #e2e8f0;
+    --indigo: #4f46e5;
+    --indigo-dark: #4338ca;
+    --indigo-soft: #eef2ff;
+    --green: #059669;
+    --green-soft: #ecfdf5;
+    --orange: #d97706;
+    --orange-soft: #fff7ed;
+    --red: #dc2626;
+    --red-soft: #fef2f2;
+    --gray: #94a3b8;
+    --shadow: 0 10px 30px rgba(15, 23, 42, .08);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    line-height: 1.6;
+  }
+  header {
+    background: linear-gradient(120deg, #312e81, #4f46e5 55%, #7c3aed);
+    color: #fff;
+    padding: 30px 20px 34px;
+    text-align: center;
+  }
+  header h1 {
+    margin: 0 0 8px;
+    font-size: clamp(24px, 4vw, 36px);
+    letter-spacing: 1px;
+  }
+  header .sub {
+    color: rgba(255, 255, 255, .85);
+    max-width: 860px;
+    margin: 0 auto;
+    font-size: 15px;
+  }
+  main {
+    max-width: 1180px;
+    margin: -16px auto 48px;
+    padding: 0 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .panel {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    box-shadow: var(--shadow);
+    padding: 18px;
+  }
+  .panel h2 {
+    margin: 0 0 12px;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .panel h2 .tag {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--indigo);
+    background: var(--indigo-soft);
+    border-radius: 999px;
+    padding: 2px 10px;
+  }
+  /* ---------- 控制区 ---------- */
+  .controls-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+    gap: 14px;
+    align-items: end;
+  }
+  .control {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .control label {
+    font-size: 13px;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .control input {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 9px 10px;
+    font-size: 14px;
+    background: #f8fafc;
+    color: var(--text);
+    width: 100%;
+  }
+  input[type="range"] { padding: 9px 2px; accent-color: var(--indigo); }
+  .buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 14px;
+  }
+  button {
+    border: 0;
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    background: var(--indigo);
+    color: #fff;
+    transition: transform .12s, box-shadow .12s, background .12s;
+    font-family: inherit;
+  }
+  button:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(79, 70, 229, .28); }
+  button:active { transform: translateY(0); }
+  button.secondary { background: #fff; color: var(--indigo); border: 1px solid var(--indigo); }
+  button.secondary:hover { background: var(--indigo-soft); box-shadow: none; }
+  button.accent { background: var(--orange); }
+  button.accent:hover { box-shadow: 0 6px 16px rgba(217, 119, 6, .3); }
+  /* ---------- 舞台 ---------- */
+  .stage {
+    display: grid;
+    grid-template-columns: minmax(240px, 1.1fr) minmax(300px, 2fr);
+    gap: 16px;
+  }
+  @media (max-width: 720px) { .stage { grid-template-columns: 1fr; } }
+  .current-card {
+    background: linear-gradient(160deg, #f8fafc, #eef2ff);
+    border: 1px dashed #c7d2fe;
+    border-radius: 14px;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    min-height: 210px;
+  }
+  .current-label {
+    font-size: 13px;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .current-value {
+    font-size: 52px;
+    font-weight: 800;
+    color: var(--indigo);
+    margin: 6px 0 2px;
+    line-height: 1.1;
+  }
+  .current-meta {
+    font-size: 13px;
+    min-height: 20px;
+    color: #475569;
+    margin-bottom: 10px;
+  }
+  .badge {
+    display: inline-block;
+    border-radius: 999px;
+    padding: 5px 14px;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .badge.neutral { background: #f1f5f9; color: var(--muted); }
+  .badge.fill { background: var(--green-soft); color: var(--green); }
+  .badge.replace { background: var(--orange-soft); color: var(--orange); }
+  .badge.discard { background: var(--red-soft); color: var(--red); }
+  .pop { animation: pop .5s ease; }
+  @keyframes pop {
+    0% { transform: scale(.6); opacity: .3; }
+    60% { transform: scale(1.12); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .reservoir-wrap {
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 14px;
+    background: #fbfdff;
+    min-height: 210px;
+  }
+  .reservoir-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    font-size: 14px;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .reservoir {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(74px, 1fr));
+    gap: 10px;
+  }
+  .slot {
+    background: #fff;
+    border: 2px solid var(--line);
+    border-radius: 12px;
+    padding: 10px 6px 12px;
+    text-align: center;
+    min-height: 86px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    transition: border-color .2s, background .2s;
+  }
+  .slot-index {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 4px;
+    font-weight: 600;
+  }
+  .slot-value {
+    font-size: 24px;
+    font-weight: 800;
+    color: #cbd5e1;
+  }
+  .slot.filled { border-color: #a5b4fc; background: var(--indigo-soft); }
+  .slot.filled .slot-value { color: var(--indigo-dark); }
+  .slot.changed { animation: slotFlash .7s ease; border-color: var(--orange); }
+  @keyframes slotFlash {
+    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(217, 119, 6, .45); }
+    40% { transform: scale(1.08); box-shadow: 0 0 0 8px rgba(217, 119, 6, 0); }
+    100% { transform: scale(1); }
+  }
+  /* ---------- 数据流 ---------- */
+  .stream-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .stream-cell {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    background: #f1f5f9;
+    color: #94a3b8;
+    border: 2px solid transparent;
+    transition: all .15s;
+  }
+  .stream-cell.pending { background: #f8fafc; color: #cbd5e1; }
+  .stream-cell.discarded { background: #fee2e2; color: #b91c1c; }
+  .stream-cell.evicted { background: #fef3c7; color: #b45309; }
+  .stream-cell.in-reservoir { background: var(--indigo-soft); color: var(--indigo-dark); }
+  .stream-cell.current { border-color: var(--indigo); transform: scale(1.12); box-shadow: 0 3px 8px rgba(79,70,229,.25); }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .dot { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+  .dot.pending { background: #f8fafc; border: 1px solid #e2e8f0; }
+  .dot.in-reservoir { background: var(--indigo-soft); border: 1px solid #a5b4fc; }
+  .dot.evicted { background: #fef3c7; }
+  .dot.discarded { background: #fee2e2; }
+  /* ---------- 统计 + 日志 ---------- */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .stat {
+    background: #f8fafc;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 10px 12px;
+    text-align: center;
+  }
+  .stat .num { font-size: 20px; font-weight: 800; color: var(--indigo); }
+  .stat .lbl { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .log-box {
+    max-height: 250px;
+    overflow: auto;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; }
+  th { position: sticky; top: 0; background: #f8fafc; color: var(--muted); font-size: 12px; z-index: 1; }
+  tr:last-child td { border-bottom: 0; }
+  tr.row-fill td:first-child { box-shadow: inset 3px 0 0 var(--green); }
+  tr.row-replace td:first-child { box-shadow: inset 3px 0 0 var(--orange); }
+  tr.row-discard td:first-child { box-shadow: inset 3px 0 0 var(--red); }
+  .log-empty { padding: 18px; text-align: center; color: var(--muted); font-size: 13px; }
+  /* ---------- 概率验证 ---------- */
+  .monte-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .monte-controls .control { min-width: 160px; }
+  .sim-summary { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+  .sim-summary b { color: var(--text); }
+  .histogram {
+    position: relative;
+    height: 190px;
+    display: flex;
+    align-items: stretch;
+    gap: 3px;
+    border-bottom: 2px solid var(--line);
+    padding: 20px 6px 0;
+    background:
+      repeating-linear-gradient(to top, rgba(226,232,240,.45) 0 1px, transparent 1px 48px);
+  }
+  .bar-col {
+    flex: 1 1 0;
+    min-width: 5px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: stretch;
+    position: relative;
+  }
+  .bar {
+    background: linear-gradient(180deg, #818cf8, #4f46e5);
+    border-radius: 5px 5px 0 0;
+    min-height: 1px;
+    transition: height .25s ease;
+  }
+  .bar-col:hover .bar { background: #f59e0b; }
+  .bar-label {
+    position: absolute;
+    bottom: -18px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 9px;
+    color: var(--muted);
+  }
+  .bar-count {
+    position: absolute;
+    bottom: calc(100% - 18px);
+    left: 0; right: 0;
+    text-align: center;
+    font-size: 9px;
+    color: #475569;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .bar-col:hover .bar-count { opacity: 1; }
+  .expected-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    border-top: 2px dashed #dc2626;
+    pointer-events: none;
+  }
+  .expected-tag {
+    position: absolute;
+    right: 8px;
+    top: -22px;
+    background: var(--red-soft);
+    color: var(--red);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 1px 8px;
+    border-radius: 6px;
+  }
+  .sim-placeholder {
+    display: flex;
+    height: 120px;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  /* ---------- 算法说明 ---------- */
+  .explain-grid {
+    display: grid;
+    grid-template-columns: 1.05fr .95fr;
+    gap: 16px;
+  }
+  @media (max-width: 760px) { .explain-grid { grid-template-columns: 1fr; } }
+  pre {
+    margin: 0;
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 14px 16px;
+    border-radius: 12px;
+    font-size: 13px;
+    overflow: auto;
+    line-height: 1.7;
+  }
+  pre .kw { color: #a5b4fc; }
+  pre .cm { color: #64748b; }
+  .formula-list { font-size: 14px; color: #334155; }
+  .formula-list li { margin: 7px 0; }
+  .formula-list code {
+    background: var(--indigo-soft);
+    color: var(--indigo-dark);
+    padding: 1px 7px;
+    border-radius: 6px;
+    font-weight: 700;
+  }
+  footer {
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+    padding: 10px 16px 28px;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>蓄水池抽样算法可视化</h1>
+  <div class="sub">
+    Reservoir Sampling —— 在一个长度未知或无法全部载入内存的数据流中，等概率地随机抽取 <strong>k</strong> 个元素。
+    算法仅需 O(k) 的额外空间，每个元素最终被抽中的概率都是 <strong>k/n</strong>。
+  </div>
+</header>
+
+<main>
+  <!-- 控制面板 -->
+  <section class="panel">
+    <h2>参数设置 <span class="tag">Controls</span></h2>
+    <div class="controls-grid">
+      <div class="control">
+        <label for="kInput">蓄水池大小 k</label>
+        <input id="kInput" type="number" min="1" max="12" value="3">
+      </div>
+      <div class="control">
+        <label for="nInput">数据流长度 n</label>
+        <input id="nInput" type="number" min="1" max="80" value="24">
+      </div>
+      <div class="control">
+        <label for="speedInput">演示速度</label>
+        <input id="speedInput" type="range" min="1" max="10" value="5">
+      </div>
+      <div class="control">
+        <label for="seedInput">随机种子（可留空）</label>
+        <input id="seedInput" type="number" step="1" placeholder="留空则每次随机">
+      </div>
+    </div>
+    <div class="buttons">
+      <button id="resetBtn" class="secondary">🔄 重置</button>
+      <button id="stepBtn" class="secondary">⏭ 单步执行</button>
+      <button id="playBtn">▶ 开始演示</button>
+      <button id="finishBtn" class="accent">⏩ 跳到结束</button>
+    </div>
+  </section>
+
+  <!-- 核心舞台 -->
+  <section class="panel stage">
+    <div class="current-card">
+      <div class="current-label">当前流入元素</div>
+      <div class="current-value" id="currentValue">—</div>
+      <div class="current-meta" id="currentMeta">等待开始</div>
+      <div id="decisionBadge" class="badge neutral">等待开始</div>
+    </div>
+    <div class="reservoir-wrap">
+      <div class="reservoir-title">
+        <span>🗃️ 蓄水池（容量 k）</span>
+        <span id="reservoirState">空</span>
+      </div>
+      <div class="reservoir" id="reservoir"></div>
+    </div>
+  </section>
+
+  <!-- 数据流状态 -->
+  <section class="panel">
+    <h2>数据流状态 <span class="tag">Stream</span></h2>
+    <div class="stream-strip" id="streamStrip"></div>
+    <div class="legend">
+      <span><i class="dot pending"></i>未处理</span>
+      <span><i class="dot in-reservoir"></i>当前在蓄水池中</span>
+      <span><i class="dot evicted"></i>曾入选、后被替换</span>
+      <span><i class="dot discarded"></i>未入选 / 被丢弃</span>
+      <span><b>当前处理元素</b>：蓝色描边放大</span>
+    </div>
+  </section>
+
+  <!-- 统计与日志 -->
+  <section class="panel">
+    <h2>运行统计与日志 <span class="tag">Log</span></h2>
+    <div class="stats-grid">
+      <div class="stat"><div class="num" id="processedStat">0 / 24</div><div class="lbl">已处理元素</div></div>
+      <div class="stat"><div class="num" id="currentProbStat">—</div><div class="lbl">当前元素入选概率</div></div>
+      <div class="stat"><div class="num" id="targetProbStat">12.5%</div><div class="lbl">最终目标概率 k / n</div></div>
+      <div class="stat"><div class="num" id="finalStateStat">进行中…</div><div class="lbl">运行状态</div></div>
+    </div>
+    <div class="log-box" id="logBox">
+      <table>
+        <thead>
+          <tr><th style="width:70px">步骤</th><th style="width:90px">元素</th><th style="width:70px">随机数 j</th><th>动作</th></tr>
+        </thead>
+        <tbody id="logBody"><tr><td colspan="4" class="log-empty">点击「开始演示」或「单步执行」查看每一步的决策过程</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 概率验证 -->
+  <section class="panel">
+    <h2>概率验证：多次模拟 <span class="tag">Monte Carlo</span></h2>
+    <div class="monte-controls">
+      <div class="control">
+        <label for="simInput">模拟次数</label>
+        <input id="simInput" type="number" min="100" max="100000" step="100" value="3000">
+      </div>
+      <button id="simBtn">🎲 运行模拟并绘制直方图</button>
+    </div>
+    <div class="sim-summary" id="simSummary">运行大量独立模拟后，每个元素被选中的次数应围绕理论均值 k/n 上下波动。</div>
+    <div id="simResult">
+      <div class="sim-placeholder">尚未运行模拟。点击上方按钮，观察所有元素入选频率趋近 k/n。</div>
+    </div>
+  </section>
+
+  <!-- 算法说明 -->
+  <section class="panel">
+    <h2>算法说明 <span class="tag">How it works</span></h2>
+    <div class="explain-grid">
+      <pre><span class="kw">function</span> reservoir_sampling(stream, k):
+    R = 前 k 个元素        <span class="cm"># 先把蓄水池填满</span>
+    <span class="kw">for</span> i = k+1 .. n:
+        j = random(1, i)  <span class="cm"># 在 1~i 中均匀随机</span>
+        <span class="kw">if</span> j &lt;= k:
+            R[j] = stream[i]  <span class="cm"># 以 k/i 概率替换</span>
+    <span class="kw">return</span> R</pre>
+      <ul class="formula-list">
+        <li>当第 <code>i</code> 个元素（i &gt; k）到达时，它以 <code>k / i</code> 的概率替换蓄水池中的某个随机槽位。</li>
+        <li>第 <code>i</code> 个元素最终入选概率：<code>(k / i) × (i / n) = k / n</code>，其中后一项表示入选后不再被替换的概率。</li>
+        <li>因此数据流中的每个元素最终被抽中的概率都是 <code>k / n</code>，与 n 是否已知无关。</li>
+        <li>空间复杂度 <code>O(k)</code>，时间复杂度 <code>O(n)</code>。</li>
+      </ul>
+    </div>
+  </section>
+</main>
+
+<footer>蓄水池抽样（Algorithm R）可视化 · 纯 HTML/CSS/JavaScript，无外部依赖</footer>
+
+<script>
+(() => {
+  'use strict';
+
+  const $ = (id) => document.getElementById(id);
+  const kInput = $('kInput');
+  const nInput = $('nInput');
+  const speedInput = $('speedInput');
+  const seedInput = $('seedInput');
+  const resetBtn = $('resetBtn');
+  const stepBtn = $('stepBtn');
+  const playBtn = $('playBtn');
+  const finishBtn = $('finishBtn');
+  const simBtn = $('simBtn');
+  const simInput = $('simInput');
+
+  // ---------- 状态 ----------
+  let k = 3;
+  let n = 24;
+  let reservoir = [];
+  let everSelected = [];
+  let processed = 0;        // 当前已处理到的元素编号
+  let finished = false;
+  let logs = [];
+  let timer = null;
+  let rng = Math.random;
+  let lastJ = null;
+  let lastDecision = 'neutral';
+  let changedSlot = -1;
+  let animCounter = 0;
+  let animToken = null;
+
+  // ---------- 工具函数 ----------
+  function clamp(v, lo, hi) {
+    return Math.min(hi, Math.max(lo, v));
+  }
+
+  function parseSeed() {
+    const raw = seedInput.value.trim();
+    if (raw === '') return null;
+    const value = Number(raw);
+    if (!Number.isFinite(value)) return null;
+    return Math.abs(Math.floor(value)) >>> 0;
+  }
+
+  // mulberry32：小巧的可复现伪随机数生成器
+  function mulberry32(a) {
+    return function () {
+      a |= 0;
+      a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function makeRng(seed) {
+    return seed === null ? Math.random : mulberry32(seed);
+  }
+
+  function randInt(lo, hi) {
+    return Math.floor(rng() * (hi - lo + 1)) + lo;
+  }
+
+  function readParams() {
+    n = clamp(parseInt(nInput.value, 10) || 24, 1, 80);
+    k = clamp(parseInt(kInput.value, 10) || 3, 1, 12);
+    nInput.value = n;
+    if (k > n) {
+      k = n;
+      kInput.value = k;
+    }
+  }
+
+  function getDelay() {
+    const v = clamp(parseInt(speedInput.value, 10) || 5, 1, 10);
+    return 1100 - v * 100; // 1档约1000ms，10档约100ms
+  }
+
+  function setPlayButton(running) {
+    playBtn.textContent = running ? '⏸ 暂停' : '▶ 开始演示';
+  }
+
+  function stopTimer() {
+    if (timer !== null) {
+      clearInterval(timer);
+      timer = null;
+    }
+    setPlayButton(false);
+  }
+
+  // ---------- 核心算法单步 ----------
+  function step() {
+    if (finished || processed >= n) return;
+
+    processed += 1;
+    const i = processed;
+    let decision;
+    let action;
+    let j = null;
+    let slot = -1;
+
+    if (i <= k) {
+      // 初始化阶段：前 k 个元素直接填满蓄水池
+      reservoir[i - 1] = i;
+      everSelected[i - 1] = true;
+      decision = 'fill';
+      slot = i - 1;
+      action = `前 k 个元素初始化：元素 ${i} 直接放入槽 ${i}`;
+    } else {
+      // 抽样阶段：j ~ Uniform{1, ..., i}
+      j = randInt(1, i);
+      if (j <= k) {
+        const old = reservoir[j - 1];
+        reservoir[j - 1] = i;
+        everSelected[i - 1] = true;
+        decision = 'replace';
+        slot = j - 1;
+        action = `j = ${j} ≤ k：元素 ${i} 替换槽 ${j} 中的元素 ${old}`;
+      } else {
+        decision = 'discard';
+        action = `j = ${j} > k：元素 ${i} 未入选，被丢弃`;
+      }
+    }
+
+    lastJ = j;
+    lastDecision = decision;
+    changedSlot = slot;
+    animToken = ++animCounter;
+    logs.push({ step: i, item: i, j, decision, action });
+
+    if (i >= n) {
+      finished = true;
+    }
+
+    render();
+
+    if (finished) {
+      stopTimer();
+    }
+  }
+
+  // ---------- 控制动作 ----------
+  function resetRun() {
+    stopTimer();
+    readParams();
+    rng = makeRng(parseSeed());
+    reservoir = new Array(k).fill(null);
+    everSelected = new Array(n).fill(false);
+    processed = 0;
+    finished = false;
+    logs = [];
+    lastJ = null;
+    lastDecision = 'neutral';
+    changedSlot = -1;
+    animToken = null;
+    render();
+  }
+
+  function startAuto() {
+    if (timer !== null) return;
+    if (finished) resetRun();
+    if (processed >= n) return;
+    timer = setInterval(() => {
+      if (finished || processed >= n) {
+        stopTimer();
+        return;
+      }
+      step();
+    }, getDelay());
+    setPlayButton(true);
+  }
+
+  function pauseAuto() {
+    stopTimer();
+  }
+
+  function togglePlay() {
+    if (timer !== null) {
+      pauseAuto();
+    } else {
+      startAuto();
+    }
+  }
+
+  function stepOnce() {
+    if (timer !== null) pauseAuto();
+    if (finished) resetRun();
+    step();
+  }
+
+  function finishRun() {
+    stopTimer();
+    if (processed < n) {
+      while (processed < n && !finished) {
+        step();
+      }
+    }
+    render();
+  }
+
+  // ---------- 渲染 ----------
+  function renderCurrent() {
+    const currentValue = $('currentValue');
+    const currentMeta = $('currentMeta');
+    const badge = $('decisionBadge');
+
+    if (processed === 0) {
+      currentValue.textContent = '—';
+      currentValue.className = 'current-value';
+      currentMeta.textContent = '等待数据流入';
+      badge.className = 'badge neutral';
+      badge.textContent = '等待开始';
+      return;
+    }
+
+    const i = processed;
+    currentValue.textContent = i;
+    currentValue.className = 'current-value' + (animToken !== null ? ' pop' : '');
+
+    if (i <= k) {
+      currentMeta.textContent = `初始化阶段：前 k=${k} 个元素全部直接入选`;
+      badge.className = 'badge fill';
+      badge.textContent = `✓ 直接放入槽 ${i}`;
+    } else {
+      currentMeta.textContent = `随机抽取 j = ${lastJ}（1 ~ ${i} 均匀分布）`;
+      if (lastDecision === 'replace') {
+        badge.className = 'badge replace';
+        badge.textContent = `⇄ j = ${lastJ} ≤ ${k}，替换槽 ${lastJ}`;
+      } else {
+        badge.className = 'badge discard';
+        badge.textContent = `✗ j = ${lastJ} > ${k}，丢弃当前元素`;
+      }
+    }
+  }
+
+  function renderReservoir() {
+    const wrap = $('reservoir');
+    const state = $('reservoirState');
+    let html = '';
+
+    for (let s = 0; s < k; s++) {
+      const value = reservoir[s];
+      const filled = value !== null && value !== undefined;
+      const changed = animToken !== null && changedSlot === s;
+      html += '<div class="slot' +
+        (filled ? ' filled' : '') +
+        (changed ? ' changed' : '') +
+        '"' + (changed ? ' data-anim="' + animToken + '"' : '') + '>' +
+        '<span class="slot-index">槽 ' + (s + 1) + '</span>' +
+        '<div class="slot-value">' + (filled ? value : '—') + '</div>' +
+        '</div>';
+    }
+
+    wrap.innerHTML = html;
+
+    const count = reservoir.filter((v) => v !== null && v !== undefined).length;
+    state.textContent = count > 0 ? `已装入 ${count} / ${k}` : '空';
+
+    if (animToken !== null) {
+      const token = animToken;
+      setTimeout(() => {
+        wrap.querySelectorAll(`[data-anim="${token}"]`).forEach((el) => {
+          el.classList.remove('changed');
+          el.removeAttribute('data-anim');
+        });
+      }, 750);
+    }
+  }
+
+  function renderStream() {
+    const strip = $('streamStrip');
+    const currentSet = new Set(reservoir.filter((v) => v !== null && v !== undefined));
+    let html = '';
+
+    for (let idx = 1; idx <= n; idx++) {
+      let cls = 'stream-cell pending';
+      if (idx === processed) cls += ' current';
+      if (currentSet.has(idx)) cls += ' in-reservoir';
+      else if (everSelected[idx - 1]) cls += ' evicted';
+      else if (idx <= processed) cls += ' discarded';
+      html += `<div class="${cls}" title="元素 ${idx}">${idx}</div>`;
+    }
+
+    strip.innerHTML = html;
+  }
+
+  function renderLog() {
+    const body = $('logBody');
+    const box = $('logBox');
+
+    if (logs.length === 0) {
+      body.innerHTML = '<tr><td colspan="4" class="log-empty">点击「开始演示」或「单步执行」查看每一步的决策过程</td></tr>';
+      return;
+    }
+
+    body.innerHTML = logs.map((log) => {
+      return '<tr class="row-' + log.decision + '">' +
+        '<td>' + log.step + '</td>' +
+        '<td>元素 ' + log.item + '</td>' +
+        '<td>' + (log.j === null ? '—' : log.j) + '</td>' +
+        '<td>' + log.action + '</td>' +
+        '</tr>';
+    }).join('');
+
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function renderStats() {
+    $('processedStat').textContent = `${processed} / ${n}`;
+    $('targetProbStat').textContent = ((k / n) * 100).toFixed(1) + '%';
+
+    if (processed === 0) {
+      $('currentProbStat').textContent = '—';
+    } else if (processed <= k) {
+      $('currentProbStat').textContent = '100%';
+    } else {
+      $('currentProbStat').textContent = ((k / processed) * 100).toFixed(1) + '%';
+    }
+
+    if (finished) {
+      $('finalStateStat').textContent = '✅ 已完成';
+    } else if (processed > 0) {
+      $('finalStateStat').textContent = '进行中…';
+    } else {
+      $('finalStateStat').textContent = '未开始';
+    }
+  }
+
+  function render() {
+    renderCurrent();
+    renderReservoir();
+    renderStream();
+    renderLog();
+    renderStats();
+  }
+
+  // ---------- Monte Carlo 概率验证 ----------
+  function runSimulations() {
+    readParams();
+    if (n <= 0 || k <= 0) return;
+
+    const simCount = clamp(parseInt(simInput.value, 10) || 3000, 100, 100000);
+    simInput.value = simCount;
+
+    const counts = new Array(n).fill(0);
+    const simRng = makeRng(parseSeed());
+    const startTime = performance.now();
+
+    for (let s = 0; s < simCount; s++) {
+      // 用 0 基下标模拟，最终统计每个元素出现在蓄水池中的次数
+      const res = new Array(k);
+      for (let t = 0; t < k; t++) res[t] = t;
+
+      for (let idx = k; idx < n; idx++) {
+        const j = Math.floor(simRng() * (idx + 1)); // j ∈ [0, idx]
+        if (j < k) res[j] = idx;
+      }
+
+      for (let t = 0; t < k; t++) counts[res[t]] += 1;
+    }
+
+    const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
+    const total = counts.reduce((a, b) => a + b, 0);
+    const expected = (k / n) * simCount;
+    const min = Math.min(...counts);
+    const max = Math.max(...counts);
+
+    $('simSummary').innerHTML =
+      `共运行 <b>${simCount.toLocaleString()}</b> 次独立模拟（耗时 ${elapsed}s）· ` +
+      `每个元素入选次数的理论均值 <b>${expected.toFixed(2)}</b> · ` +
+      `实际区间 <b>${min} ~ ${max}</b> · ` +
+      `总入选次数 <b>${total.toLocaleString()}</b>（应为 k × 模拟次数 = ${(k * simCount).toLocaleString()}）`;
+
+    const result = $('simResult');
+    const pct = (k / n) * 100;
+    let bars = '';
+
+    for (let idx = 0; idx < n; idx++) {
+      const h = (counts[idx] / simCount) * 100;
+      bars += '<div class="bar-col" title="元素 ' + (idx + 1) + '：入选 ' +
+        counts[idx].toLocaleString() + ' 次（' + h.toFixed(2) + '%）">' +
+        '<div class="bar-count">' + counts[idx] + '</div>' +
+        '<div class="bar" style="height:' + h.toFixed(2) + '%"></div>' +
+        '<div class="bar-label">' + (idx + 1) + '</div>' +
+        '</div>';
+    }
+
+    result.innerHTML =
+      '<div class="histogram">' +
+      '<div class="expected-line" style="bottom:' + pct.toFixed(2) + '%">' +
+      '<span class="expected-tag">理论 k/n = ' + pct.toFixed(2) + '%</span></div>' +
+      bars +
+      '</div>';
+  }
+
+  // ---------- 事件绑定 ----------
+  resetBtn.addEventListener('click', resetRun);
+  playBtn.addEventListener('click', togglePlay);
+  stepBtn.addEventListener('click', stepOnce);
+  finishBtn.addEventListener('click', finishRun);
+  simBtn.addEventListener('click', runSimulations);
+
+  [kInput, nInput, seedInput].forEach((input) => {
+    input.addEventListener('change', resetRun);
+  });
+
+  speedInput.addEventListener('input', () => {
+    if (timer !== null) {
+      clearInterval(timer);
+      timer = setInterval(() => {
+        if (finished || processed >= n) {
+          stopTimer();
+          return;
+        }
+        step();
+      }, getDelay());
+    }
+  });
+
+  // ---------- 初始化 ----------
+  resetRun();
+})();
+</script>
+</body>
+</html>

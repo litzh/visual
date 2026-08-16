@@ -1,0 +1,140 @@
+# 站点索引：AI 生成产物清单
+# 字段说明：
+#   file     文件名（相对各自目录）
+#   title    展示标题
+#   prompt   生成时使用的提示词列表（按对话轮次排列；单轮可只写一项）
+#   model    生成模型，如 deepseek-v4-pro-0813
+#   effort   推理强度，如 max
+#   harness  生成环境，如 pi / dsh
+#   preset   harness 预设，如 default / anchored-standard
+#   date     生成日期
+#   note     备注（如版本迭代关系）
+
+title: AI 生成作品集
+description: 使用 AI 生成的网页应用、矢量图与 3D 模型
+
+html:
+  - file: solar-system.html
+    title: 太阳系三维演示模拟
+    prompt: 
+      - "忽略当前目录下的文件，用单个HTML 开发一个太阳系的演示模拟页面，越详细、越精确越好，直接开发"
+    model: "deepseek-v4-pro-0813"
+    effort: "max"
+    harness: "pi"
+    preset: "default"
+    date: 2026-08-16
+  - file: logic-circuit-simulator.html
+    title: 逻辑电路模模拟器
+    prompt: 
+      - "测试，回复OK"
+      - "在 html 目录下创建一个 html 文件，用单个文件实现一个逻辑电路模拟器，用户可以自己组建、测试电路，直接开发，不用问我"
+      - "默认的半加法器，异或门和L1之间连线、与门与L2之间的连线，在输入高电平的时候会消失而不是发光。"
+      - "连线功能不正常，点击输出引脚之后，不松开鼠标按键可以看到线，并且连接到了输出引脚上，但是鼠标移动到输入引脚后没有连接上，松开鼠标线就消失了。"
+    model: "deepseek-v4-pro-0813"
+    effort: "max"
+    harness: "pi"
+    preset: "anchored-standard"
+    date: 2026-08-16
+  - file: logic-circuit-simulator-v2.html
+    title: 逻辑电路模拟器 v2
+    prompt: 
+      - "参考逻辑电路模拟器"
+      - "如果要加入记忆功能是时钟功能，还需要添加哪些器件？"
+      - "你在现在的基础上开发这些功能，不过保存到 html/logic-circuit-simulator-v2.html 里面，原来的文件不要动了"
+    model: "deepseek-v4-pro-0813"
+    effort: "max"
+    harness: "pi"
+    preset: "anchored-standard"
+    date: 2026-08-16
+    note: logic-circuit-simulator 的 v2 迭代版
+  - file: sorting-visualization.html
+    title: 排序算法可视化
+    prompt: 
+      - "忽略当前目录下的文件，创建单个HTML文件，可视化演示归并排序、希尔排序、快速排序、堆排序"
+      - "需要同屏展示4个，可以同时运行比较速度"
+      - "1. 2x2的网格；2. 按你的方案"
+    model: "deepseek-v4-pro-0813"
+    effort: "max"
+    harness: "pi"
+    preset: "anchored-standard"
+    date: 2026-08-16
+  - file: buffon-needle.html
+    title: 蒲丰投针实验
+    prompt: 
+      - "在当前页面下创建一个HTML文件，可视化模拟蒲丰投针实验"
+    model: "deepseek-v4-pro-0813"
+    effort: "max"
+    harness: "dsh"
+    preset: "anchored-standard"
+    date: 2026-08-15
+  - file: reservoir-sampling.html
+    title: 蓄水池抽样
+    prompt: 
+      - "在当前页面下创建一个HTML文件，用来进行算法可视化，实现一个蓄水池抽样的可视化"
+    model: "deepseek-v4-pro-0813"
+    effort: "max"
+    harness: "dsh"
+    preset: "anchored-standard"
+    date: 2026-08-15
+  - file: circle-similarity.html
+    title: 闭合曲线圆形度评分器
+    prompt:
+      - "在当前页面下创建一个HTML文件，用户可以用鼠标画闭合曲线，画完之后计算这个曲线长度和内接圆/外接圆半径的比值，然后判断这个曲线和圆的相似度，并且打分"
+    model: "deepseek-v4-pro-0813"
+    effort: "max"
+    harness: "dsh"
+    preset: "anchored-standard"
+    date: 2026-08-15
+
+svg:
+  - file: penrose_stairs.svg
+    title: 彭罗斯阶梯
+    prompt: 
+      - "用SVG画一个彭罗斯阶梯"
+    model: "deepseek-v4-pro-0813"
+    effort: "max"
+    harness: "dsh"
+    preset: "default"
+    date: 2026-08-15
+
+scad:
+  - file: pantheon-standard.scad
+    title: 万神庙（v4pro标准）
+    prompt: 
+      - "用scad画万神殿的结构"
+    model: "deepseek-v4-pro-0813"
+    effort: "max"
+    harness: "dsh"
+    preset: "default"
+    date: 2026-08-16
+    note: 系列迭代版本之一
+  - file: pantheon-k3.scad
+    title: 万神庙（kimi-k3）
+    prompt: 
+      - "用scad画万神殿的结构"
+    model: "kimi-k3"
+    effort: "max"
+    harness: "dsh"
+    preset: "default"
+    date: 2026-08-16
+    note: 系列迭代版本之一
+  - file: pantheon-v4p.scad
+    title: 万神庙（v4pro版）
+    prompt: 
+      - "用scad画万神殿的结构"
+    model: "deepseek-v4-pro-0813"
+    effort: "max"
+    harness: "pi"
+    preset: "default"
+    date: 2026-08-16
+    note: 系列迭代版本之一
+  - file: pantheon-anchored.scad
+    title: 万神庙（v4pro极简）
+    prompt:
+      - "用scad画万神殿的结构"
+    model: "deepseek-v4-pro-0813"
+    effort: "max"
+    harness: "dsh"
+    preset: "anchored-standard"
+    date: 2026-08-16
+    note: 系列迭代版本之一
