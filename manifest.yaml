@@ -108,6 +108,16 @@ html:
     preset: "anchored-standard"
     date: 2026-08-16
     note: "全程没有联网"
+  - file: optical_simulation.html
+    title: 光学模拟
+    prompt:
+      - "测试一下，回复ok"
+      - "开发一个单文件的HTML，要求实现光学模拟仿真，包括以下内容：1. 夫琅禾费衍射；2. 双缝干涉；3. 菲涅尔衍射；4. 泊松光斑。使用3D的界面，用户可以从各个角度观察。直接开发。"
+    model: "deepseek-v4-pro-0813"
+    effort: "max"
+    harness: "pi"
+    preset: "anchored-standard"
+    date: 2026-08-17
 
 svg:
   - file: penrose_stairs.svg

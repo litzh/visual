@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>光学衍射模拟仿真 · 3D</title>
+<style>
+  :root{
+    --bg:#0b0e14;
+    --panel:rgba(15,19,29,.88);
+    --border:rgba(120,150,200,.18);
+    --accent:#5fb0ff;
+    --text:#dfe6f3;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; height:100%; overflow:hidden; background:var(--bg); color:var(--text);
+    font-family:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
+  #scene{ position:fixed; inset:0; width:100%; height:100%; display:block; }
+
+  #hud{ position:fixed; inset:0; pointer-events:none; }
+  #title{ position:absolute; top:16px; left:18px; }
+  #title h1{ margin:0; font-size:18px; font-weight:600; letter-spacing:.5px; }
+  #title .sub{ margin-top:4px; font-size:12px; opacity:.55; }
+
+  #modes{ position:absolute; top:16px; left:50%; transform:translateX(-50%);
+    display:flex; gap:8px; pointer-events:auto; flex-wrap:wrap; justify-content:center; }
+  #modes button{ border:1px solid var(--border); background:rgba(15,19,29,.7); color:var(--text);
+    padding:8px 14px; border-radius:10px; cursor:pointer; font-size:13px; transition:.15s; backdrop-filter:blur(6px); }
+  #modes button:hover{ border-color:var(--accent); }
+  #modes button.active{ background:var(--accent); border-color:var(--accent); color:#04121f; font-weight:600; }
+
+  #panel{ position:absolute; top:16px; right:16px; width:300px;
+    max-height:calc(100vh - 36px); overflow:auto; background:var(--panel);
+    border:1px solid var(--border); border-radius:14px; padding:14px 16px; pointer-events:auto;
+    backdrop-filter:blur(8px); }
+  #panel h2{ margin:0 0 6px; font-size:15px; font-weight:600; color:var(--accent); }
+  #formula{ margin:0 0 12px; font-size:12px; line-height:1.5; opacity:.78;
+    background:rgba(255,255,255,.04); border-radius:8px; padding:8px 10px; }
+  .param{ margin-bottom:13px; }
+  .param .row{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:5px; }
+  .param label{ font-size:12.5px; opacity:.9; }
+  .param .val{ font-size:12px; font-variant-numeric:tabular-nums; opacity:.7; min-width:52px; text-align:right; }
+  .param input[type=range]{ width:100%; accent-color:var(--accent); cursor:pointer; }
+  .note{ font-size:11px; opacity:.5; margin-top:10px; line-height:1.5; }
+
+  #hint{ position:absolute; bottom:14px; left:50%; transform:translateX(-50%);
+    font-size:12px; opacity:.55; text-align:center; }
+  #overlay{ position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    background:rgba(0,0,0,.62); padding:8px 18px; border-radius:9px; font-size:13px;
+    opacity:0; transition:opacity .12s; pointer-events:none; }
+  #overlay.show{ opacity:1; }
+  #loaderror{ position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    width:min(480px,88vw); background:rgba(40,16,16,.9); border:1px solid rgba(255,120,120,.4);
+    border-radius:12px; padding:18px 20px; font-size:13px; line-height:1.6; display:none; }
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+
+<div id="hud">
+  <div id="title">
+    <h1>光学衍射模拟仿真</h1>
+    <div class="sub">夫琅禾费衍射 · 双缝干涉 · 菲涅尔衍射 · 泊松光斑</div>
+  </div>
+
+  <div id="modes">
+    <button data-mode="fraunhofer_slit">夫琅禾费单缝</button>
+    <button data-mode="double_slit">双缝干涉</button>
+    <button data-mode="fresnel_square">菲涅尔衍射</button>
+    <button data-mode="poisson">泊松光斑</button>
+  </div>
+
+  <div id="panel">
+    <h2 id="modeName">夫琅禾费单缝衍射</h2>
+    <div id="formula"></div>
+    <div id="params"></div>
+    <div class="note">提示：本模拟为教学示意图，波长经放大以便观察。拖拽旋转视角，滚轮缩放，右键平移。</div>
+  </div>
+
+  <div id="hint">拖拽旋转 · 滚轮缩放 · 右键平移</div>
+  <div id="overlay">计算中…</div>
+  <div id="loaderror">Three.js 加载失败。请检查网络连接（需联网加载 CDN），或通过本地 HTTP 服务器打开本文件。</div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+/* =========================================================================
+   光学模拟仿真（单文件 · Three.js 3D）
+   - 夫琅禾费单缝衍射：解析 sinc²
+   - 双缝干涉：解析 cos² · sinc²
+   - 菲涅尔衍射（方孔）：角谱法 / 菲涅尔单次 FFT 数值传播
+   - 泊松光斑（圆盘）：角谱法 / 菲涅尔单次 FFT 数值传播
+   ========================================================================= */
+
+const $ = id => document.getElementById(id);
+
+/* ---------------- 模式与参数定义 ---------------- */
+const MODES = {
+  fraunhofer_slit: {
+    name: '夫琅禾费单缝衍射',
+    formula: '远场（透镜焦平面）衍射： I(x) = sinc²(π a x / λ f)',
+    params: [
+      { key:'lambda', label:'模拟波长 λ', unit:' μm', min:1, max:20, step:0.5, value:5 },
+      { key:'a',      label:'缝宽 a',      unit:' mm', min:0.1, max:3, step:0.05, value:0.5 },
+      { key:'f',      label:'透镜焦距 f',  unit:' mm', min:50, max:500, step:5, value:200 },
+    ]
+  },
+  double_slit: {
+    name: '双缝干涉',
+    formula: 'I(x) = cos²(π d x / λ f) · sinc²(π a x / λ f)',
+    params: [
+      { key:'lambda', label:'模拟波长 λ', unit:' μm', min:1, max:20, step:0.5, value:5 },
+      { key:'a',      label:'缝宽 a',      unit:' mm', min:0.1, max:2, step:0.05, value:0.3 },
+      { key:'d',      label:'缝间距 d',    unit:' mm', min:0.3, max:5, step:0.05, value:1.2 },
+      { key:'f',      label:'透镜焦距 f',  unit:' mm', min:50, max:500, step:5, value:200 },
+    ]
+  },
+  fresnel_square: {
+    name: '菲涅尔衍射（方孔）',
+    formula: '近场衍射：采用角谱法 / 菲涅尔衍射积分数值求解。',
+    params: [
+      { key:'lambda', label:'模拟波长 λ', unit:' μm', min:1, max:20, step:0.5, value:5 },
+      { key:'s',      label:'孔径边长 s',  unit:' mm', min:0.5, max:3.5, step:0.1, value:2 },
+      { key:'z',      label:'观察距离 z',  unit:' mm', min:30, max:400, step:5, value:150 },
+    ]
+  },
+  poisson: {
+    name: '泊松光斑（圆盘衍射）',
+    formula: '平行光照射不透明圆盘，几何阴影中心出现亮斑（阿拉果斑）。',
+    params: [
+      { key:'lambda', label:'模拟波长 λ', unit:' μm', min:1, max:20, step:0.5, value:5 },
+      { key:'R',      label:'圆盘半径 R',  unit:' mm', min:0.3, max:2.5, step:0.05, value:1 },
+      { key:'z',      label:'观察距离 z',  unit:' mm', min:30, max:400, step:5, value:200 },
+    ]
+  }
+};
+
+/* ---------------- 常量 ---------------- */
+const SOURCE_DIST = 30;          // 光源到孔径平面距离 (mm)
+const BEAM_RADIUS = 14;          // 入射光束半径 (mm)
+const LENS_RADIUS  = 12;         // 透镜半径 (mm)
+const APERTURE_PLANE_SIZE = 24;  // 孔径挡板尺寸 (mm)
+const SCREEN_SIZE = 10;          // 观察屏尺寸 (mm)，即显示窗口
+const PATTERN_SIZE = 512;        // 图案纹理像素
+const NUM_N = 512;               // 数值衍射网格点数（2 的幂）
+const NUM_L = 32;                // 数值衍射孔径窗口物理尺寸 (mm)
+
+/* ---------------- Three.js 引用 ---------------- */
+let THREE, OrbitControls;
+let renderer, scene, camera, controls;
+
+/* ---------------- 全局状态 ---------------- */
+const state = {
+  mode: 'fraunhofer_slit',
+  params: {},
+  group: null,
+  beamGroup: null,
+  screenZ: 400,
+  screenMesh: null,
+  apertureMesh: null,
+  lensMesh: null,
+  diskMesh: null,
+};
+
+let patternCanvas, patternCtx, patternTex;
+let apertureCanvas, apertureCtx, apertureTex;
+
+/* ---------------- 颜色映射（近似 inferno） ---------------- */
+const COLORMAP_STOPS = [
+  [0.00,   0,   0,   4],
+  [0.13,  31,  12,  72],
+  [0.25,  87,  15, 109],
+  [0.38, 148,  32, 105],
+  [0.50, 188,  55,  84],
+  [0.63, 224,  89,  60],
+  [0.75, 249, 142,   8],
+  [0.88, 252, 221,  34],
+  [1.00, 252, 255, 164],
+];
+function colormap(t){
+  t = t < 0 ? 0 : (t > 1 ? 1 : t);
+  for (let i = 0; i < COLORMAP_STOPS.length - 1; i++){
+    const [t0, r0, g0, b0] = COLORMAP_STOPS[i];
+    const [t1, r1, g1, b1] = COLORMAP_STOPS[i + 1];
+    if (t >= t0 && t <= t1){
+      const f = (t - t0) / (t1 - t0);
+      return [r0 + (r1 - r0) * f, g0 + (g1 - g0) * f, b0 + (b1 - b0) * f];
+    }
+  }
+  const c = COLORMAP_STOPS[COLORMAP_STOPS.length - 1];
+  return [c[1], c[2], c[3]];
+}
+
+/* ---------------- 2D FFT ---------------- */
+function fft1d(re, im, inv){
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++){
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j){
+      let t = re[i]; re[i] = re[j]; re[j] = t;
+      t = im[i]; im[i] = im[j]; im[j] = t;
+    }
+  }
+  for (let len = 2; len <= n; len <<= 1){
+    const ang = (inv ? 2 : -2) * Math.PI / len;
+    const wr = Math.cos(ang), wi = Math.sin(ang);
+    const half = len >> 1;
+    for (let i = 0; i < n; i += len){
+      let cr = 1, ci = 0;
+      for (let k = 0; k < half; k++){
+        const a = i + k, b = i + k + half;
+        const vr = re[b] * cr - im[b] * ci;
+        const vi = re[b] * ci + im[b] * cr;
+        const ur = re[a], ui = im[a];
+        re[a] = ur + vr; im[a] = ui + vi;
+        re[b] = ur - vr; im[b] = ui - vi;
+        const nr = cr * wr - ci * wi;
+        ci = cr * wi + ci * wr;
+        cr = nr;
+      }
+    }
+  }
+  if (inv){
+    for (let i = 0; i < n; i++){ re[i] /= n; im[i] /= n; }
+  }
+}
+
+function fft2d(re, im, inv){
+  const N = Math.round(Math.sqrt(re.length));
+  const rowRe = new Float64Array(N), rowIm = new Float64Array(N);
+  for (let y = 0; y < N; y++){
+    const off = y * N;
+    for (let x = 0; x < N; x++){ const i = off + x; rowRe[x] = re[i]; rowIm[x] = im[i]; }
+    fft1d(rowRe, rowIm, inv);
+    for (let x = 0; x < N; x++){ const i = off + x; re[i] = rowRe[x]; im[i] = rowIm[x]; }
+  }
+  const colRe = new Float64Array(N), colIm = new Float64Array(N);
+  for (let x = 0; x < N; x++){
+    for (let y = 0; y < N; y++){ const i = y * N + x; colRe[y] = re[i]; colIm[y] = im[i]; }
+    fft1d(colRe, colIm, inv);
+    for (let y = 0; y < N; y++){ const i = y * N + x; re[i] = colRe[y]; im[i] = colIm[y]; }
+  }
+}
+
+/* ---------------- 光束平滑衰减（抑制窗口边缘伪影） ---------------- */
+function beamProfile(r, L){
+  const Rmax = L / 2;
+  if (r <= Rmax * 0.82) return 1;
+  if (r >= Rmax) return 0;
+  const t = (r - Rmax * 0.82) / (Rmax * 0.18);
+  return 0.5 * (1 + Math.cos(Math.PI * t));
+}
+
+/* ---------------- 数值衍射孔径 ---------------- */
+function buildAperture(mode, p, N, L){
+  const re = new Float64Array(N * N);
+  const dx = L / N;
+  const isSquare = (mode === 'fresnel_square');
+  for (let v = 0; v < N; v++){
+    const y = (v - N / 2) * dx;
+    for (let u = 0; u < N; u++){
+      const x = (u - N / 2) * dx;
+      let t;
+      if (isSquare){
+        t = (Math.abs(x) <= p.s / 2 && Math.abs(y) <= p.s / 2) ? 1 : 0;
+      } else { // 圆盘障碍物：盘内为 0，盘外为入射光束
+        const r = Math.hypot(x, y);
+        t = (r > p.R) ? 1 : 0;
+        t *= beamProfile(r, L);
+      }
+      re[v * N + u] = t;
+    }
+  }
+  return re;
+}
+
+/* ---------------- 角谱法（小 z 时使用，输出窗口 = L） ---------------- */
+function propagateASM(aperture, N, L, lambda, z){
+  const re = Float64Array.from(aperture);
+  const im = new Float64Array(N * N);
+  fft2d(re, im, false);
+  const df = 1 / L;
+  for (let v = 0; v < N; v++){
+    const fy = (v < N / 2 ? v : v - N) * df;
+    for (let u = 0; u < N; u++){
+      const fx = (u < N / 2 ? u : u - N) * df;
+      const s = 1 - (lambda * fx) * (lambda * fx) - (lambda * fy) * (lambda * fy);
+      const i = v * N + u;
+      if (s < 0){ re[i] = 0; im[i] = 0; continue; }
+      const phase = (2 * Math.PI / lambda) * z * Math.sqrt(s);
+      const c = Math.cos(phase), sn = Math.sin(phase);
+      const r = re[i], m = im[i];
+      re[i] = r * c - m * sn;
+      im[i] = r * sn + m * c;
+    }
+  }
+  fft2d(re, im, true);
+  const intensity = new Float32Array(N * N);
+  for (let i = 0; i < N * N; i++) intensity[i] = re[i] * re[i] + im[i] * im[i];
+  return { intensity, window: L };
+}
+
+/* ---------------- 菲涅尔单次 FFT（大 z 时使用，输出窗口 = λzN/L） ---------------- */
+function propagateFresnel(aperture, N, L, lambda, z){
+  const k = 2 * Math.PI / lambda;
+  const dx = L / N;
+  const re = new Float64Array(N * N);
+  const im = new Float64Array(N * N);
+  for (let v = 0; v < N; v++){
+    const y = (v - N / 2) * dx;
+    for (let u = 0; u < N; u++){
+      const x = (u - N / 2) * dx;
+      const phase = k * (x * x + y * y) / (2 * z);
+      const i = v * N + u;
+      const a = aperture[i];
+      re[i] = a * Math.cos(phase);
+      im[i] = a * Math.sin(phase);
+    }
+  }
+  fft2d(re, im, false);
+  const intensity = new Float32Array(N * N);
+  for (let v = 0; v < N; v++){
+    for (let u = 0; u < N; u++){
+      const i = v * N + u;
+      const mag2 = re[i] * re[i] + im[i] * im[i];
+      const su = (u + N / 2) % N;
+      const sv = (v + N / 2) % N;
+      intensity[sv * N + su] = mag2;
+    }
+  }
+  const window = lambda * z * N / L;
+  return { intensity, window };
+}
+
+/* ---------------- 数值传播（按 z 自动选择方法） ---------------- */
+function propagate(mode, p, N, L){
+  const lambda = p.lambda * 0.001; // μm -> mm
+  const aperture = buildAperture(mode, p, N, L);
+  const zc = (L * L) / (lambda * N); // 两种方法的临界距离
+  if (p.z <= zc) return propagateASM(aperture, N, L, lambda, p.z);
+  return propagateFresnel(aperture, N, L, lambda, p.z);
+}
+
+/* ---------------- 图案渲染 ---------------- */
+function drawPattern(sampler, W, maxI){
+  const size = PATTERN_SIZE;
+  const img = patternCtx.createImageData(size, size);
+  const gamma = 0.55;
+  const data = img.data;
+  for (let j = 0; j < size; j++){
+    const y = ((j + 0.5) / size - 0.5) * W;
+    for (let i = 0; i < size; i++){
+      const x = ((i + 0.5) / size - 0.5) * W;
+      let v = sampler(x, y);
+      if (!(v > 0)) v = 0;
+      let n = v / maxI;
+      if (n > 1) n = 1;
+      n = Math.pow(n, gamma);
+      const c = colormap(n);
+      const idx = (j * size + i) * 4;
+      data[idx] = c[0]; data[idx + 1] = c[1]; data[idx + 2] = c[2]; data[idx + 3] = 255;
+    }
+  }
+  patternCtx.putImageData(img, 0, 0);
+  patternTex.needsUpdate = true;
+}
+
+function computePattern(){
+  const mode = state.mode;
+  const p = state.params;
+  const W = SCREEN_SIZE;
+  const lambda = p.lambda * 0.001;
+
+  if (mode === 'fraunhofer_slit' || mode === 'double_slit'){
+    const a = p.a, f = p.f;
+    const d = (mode === 'double_slit') ? Math.max(p.d, p.a + 0.05) : 0;
+    drawPattern((x, y) => {
+      const b = Math.PI * a * x / (lambda * f);
+      const s = Math.abs(b) < 1e-6 ? 1 : Math.sin(b) / b;
+      if (mode === 'fraunhofer_slit') return s * s;
+      const g = Math.PI * d * x / (lambda * f);
+      const c = Math.cos(g);
+      return c * c * s * s;
+    }, W, 1);
+  } else {
+    const N = NUM_N, L = NUM_L;
+    const { intensity, window } = propagate(mode, p, N, L);
+    let max = 0;
+    for (let i = 0; i < intensity.length; i++) if (intensity[i] > max) max = intensity[i];
+    if (max <= 0) max = 1;
+    drawPattern((x, y) => {
+      const fx = (x + window / 2) / window;
+      const fy = (y + window / 2) / window;
+      if (fx < 0 || fx > 1 || fy < 0 || fy > 1) return 0;
+      const gx = fx * (N - 1);
+      const gy = fy * (N - 1);
+      const x0 = Math.floor(gx), y0 = Math.floor(gy);
+      const x1 = Math.min(N - 1, x0 + 1), y1 = Math.min(N - 1, y0 + 1);
+      const tx = gx - x0, ty = gy - y0;
+      const i00 = intensity[y0 * N + x0], i10 = intensity[y0 * N + x1];
+      const i01 = intensity[y1 * N + x0], i11 = intensity[y1 * N + x1];
+      return (i00 * (1 - tx) + i10 * tx) * (1 - ty) + (i01 * (1 - tx) + i11 * tx) * ty;
+    }, W, max);
+  }
+}
+
+/* ---------------- 孔径挡板纹理 ---------------- */
+function drawAperture(){
+  const ctx = apertureCtx;
+  const size = PATTERN_SIZE;
+  ctx.clearRect(0, 0, size, size);
+  ctx.fillStyle = '#11151d';
+  ctx.fillRect(0, 0, size, size);
+
+  // 边框与刻度感
+  ctx.strokeStyle = 'rgba(130,160,210,0.28)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(4, 4, size - 8, size - 8);
+  ctx.strokeStyle = 'rgba(130,160,210,0.12)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(size / 2, 4); ctx.lineTo(size / 2, size - 4);
+  ctx.moveTo(4, size / 2); ctx.lineTo(size - 4, size / 2);
+  ctx.stroke();
+
+  const p = state.params;
+  const mode = state.mode;
+  const scale = size / APERTURE_PLANE_SIZE; // px per mm
+  if (mode === 'fraunhofer_slit'){
+    const w = Math.max(1, p.a * scale), h = 16 * scale;
+    ctx.clearRect(size / 2 - w / 2, size / 2 - h / 2, w, h);
+  } else if (mode === 'double_slit'){
+    const w = Math.max(1, p.a * scale), h = 16 * scale;
+    const sep = Math.max(p.d, p.a + 0.05) * scale;
+    ctx.clearRect(size / 2 - sep / 2 - w / 2, size / 2 - h / 2, w, h);
+    ctx.clearRect(size / 2 + sep / 2 - w / 2, size / 2 - h / 2, w, h);
+  } else if (mode === 'fresnel_square'){
+    const s = Math.max(1, p.s * scale);
+    ctx.clearRect(size / 2 - s / 2, size / 2 - s / 2, s, s);
+  }
+  apertureTex.needsUpdate = true;
+}
+
+/* ---------------- 3D 场景构建 ---------------- */
+function makeBeamMaterial(){
+  return new THREE.MeshBasicMaterial({
+    color: 0xffd27f, transparent: true, opacity: 0.09,
+    side: THREE.DoubleSide, depthWrite: false,
+  });
+}
+
+function buildBeams(){
+  const g = state.beamGroup;
+  while (g.children.length){
+    const c = g.children[0];
+    g.remove(c);
+    c.geometry.dispose();
+    c.material.dispose();
+  }
+  const mat = makeBeamMaterial();
+  const mode = state.mode;
+  const p = state.params;
+
+  // 入射平行光束：光源 -> 孔径平面
+  const inc = new THREE.Mesh(
+    new THREE.CylinderGeometry(BEAM_RADIUS, BEAM_RADIUS, SOURCE_DIST, 64, 1, true), mat);
+  inc.rotation.x = Math.PI / 2;
+  inc.position.z = -SOURCE_DIST / 2;
+  g.add(inc);
+
+  if (mode === 'fraunhofer_slit' || mode === 'double_slit'){
+    const f = p.f;
+    // 孔径 -> 透镜
+    const mid = new THREE.Mesh(
+      new THREE.CylinderGeometry(LENS_RADIUS * 0.7, LENS_RADIUS * 0.7, f, 64, 1, true), mat);
+    mid.rotation.x = Math.PI / 2;
+    mid.position.z = f / 2;
+    g.add(mid);
+    // 透镜 -> 观察屏（会聚）
+    const cone = new THREE.Mesh(
+      new THREE.CylinderGeometry(SCREEN_SIZE / 2 * 0.7, LENS_RADIUS * 0.7, f, 64, 1, true), mat);
+    cone.rotation.x = Math.PI / 2;
+    cone.position.z = f + f / 2;
+    g.add(cone);
+  } else {
+    // 数值模式：孔径/圆盘 -> 观察屏（发散）
+    const openR = (mode === 'poisson') ? p.R : p.s * 0.707;
+    const cone = new THREE.Mesh(
+      new THREE.CylinderGeometry(SCREEN_SIZE / 2 * 0.8, openR, p.z, 64, 1, true), mat);
+    cone.rotation.x = Math.PI / 2;
+    cone.position.z = p.z / 2;
+    g.add(cone);
+  }
+}
+
+function buildLens(){
+  const geo = new THREE.SphereGeometry(LENS_RADIUS, 64, 32);
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x8fc7ff, roughness: 0.06, metalness: 0,
+    transparent: true, opacity: 0.42, side: THREE.DoubleSide,
+  });
+  const lens = new THREE.Mesh(geo, mat);
+  lens.scale.set(1, 1, 0.18);
+  return lens;
+}
+
+function buildDisk(R){
+  const geo = new THREE.CylinderGeometry(R, R, 0.6, 64);
+  const mat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.4, metalness: 0.3 });
+  const disk = new THREE.Mesh(geo, mat);
+  disk.rotation.x = Math.PI / 2;
+  return disk;
+}
+
+function disposeGroup(g){
+  g.traverse(o => {
+    if (o.geometry) o.geometry.dispose();
+    if (o.material){
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      mats.forEach(m => m.dispose());
+    }
+  });
+}
+
+function rebuildScene(){
+  if (state.group){
+    scene.remove(state.group);
+    disposeGroup(state.group);
+  }
+  const g = new THREE.Group();
+  state.group = g;
+  scene.add(g);
+
+  const p = state.params;
+  const mode = state.mode;
+  state.screenZ = (mode === 'fraunhofer_slit' || mode === 'double_slit') ? 2 * p.f : p.z;
+
+  // 观察屏
+  const screenMat = new THREE.MeshBasicMaterial({ map: patternTex, side: THREE.DoubleSide });
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(SCREEN_SIZE, SCREEN_SIZE), screenMat);
+  screen.position.z = state.screenZ;
+  g.add(screen);
+  state.screenMesh = screen;
+
+  // 光束
+  state.beamGroup = new THREE.Group();
+  g.add(state.beamGroup);
+  buildBeams();
+
+  // 孔径 / 圆盘 / 透镜
+  if (mode === 'poisson'){
+    state.diskMesh = buildDisk(p.R);
+    g.add(state.diskMesh);
+    state.apertureMesh = null;
+  } else {
+    drawAperture();
+    const apMat = new THREE.MeshBasicMaterial({ map: apertureTex, alphaTest: 0.5, side: THREE.DoubleSide });
+    const ap = new THREE.Mesh(new THREE.PlaneGeometry(APERTURE_PLANE_SIZE, APERTURE_PLANE_SIZE), apMat);
+    ap.position.z = 0;
+    g.add(ap);
+    state.apertureMesh = ap;
+  }
+
+  if (mode === 'fraunhofer_slit' || mode === 'double_slit'){
+    state.lensMesh = buildLens();
+    state.lensMesh.position.z = p.f;
+    g.add(state.lensMesh);
+  } else {
+    state.lensMesh = null;
+  }
+}
+
+function updateGeometry(){
+  const p = state.params;
+  const mode = state.mode;
+  state.screenZ = (mode === 'fraunhofer_slit' || mode === 'double_slit') ? 2 * p.f : p.z;
+  if (state.screenMesh) state.screenMesh.position.z = state.screenZ;
+
+  if (mode !== 'poisson') drawAperture();
+
+  if (state.lensMesh) state.lensMesh.position.z = p.f;
+
+  if (state.diskMesh){
+    const old = state.diskMesh.geometry;
+    state.diskMesh.geometry = new THREE.CylinderGeometry(p.R, p.R, 0.6, 64);
+    old.dispose();
+  }
+
+  buildBeams();
+
+  controls.target.set(0, 0, state.screenZ / 2);
+  controls.update();
+}
+
+function frameScene(){
+  const midZ = state.screenZ / 2;
+  const extent = Math.max(40, state.screenZ + 40);
+  const dist = extent * 1.4;
+  camera.position.set(dist * 0.85, dist * 0.5, midZ - dist * 0.9);
+  controls.target.set(0, 0, midZ);
+  controls.update();
+}
+
+/* ---------------- UI ---------------- */
+function buildUI(){
+  const panel = $('params');
+  panel.innerHTML = '';
+  const cfg = MODES[state.mode];
+  cfg.params.forEach(pd => {
+    const row = document.createElement('div');
+    row.className = 'param';
+
+    const top = document.createElement('div');
+    top.className = 'row';
+    const label = document.createElement('label');
+    label.textContent = pd.label;
+    const val = document.createElement('span');
+    val.className = 'val';
+    val.textContent = pd.value + pd.unit;
+    top.appendChild(label); top.appendChild(val);
+
+    const input = document.createElement('input');
+    input.type = 'range';
+    input.min = pd.min; input.max = pd.max; input.step = pd.step; input.value = pd.value;
+    input.addEventListener('input', () => {
+      state.params[pd.key] = parseFloat(input.value);
+      val.textContent = input.value + pd.unit;
+      onParamChange();
+    });
+
+    row.appendChild(top); row.appendChild(input);
+    panel.appendChild(row);
+  });
+}
+
+let paramTimer = null;
+function onParamChange(){
+  updateGeometry();
+  const mode = state.mode;
+  if (mode === 'fraunhofer_slit' || mode === 'double_slit'){
+    computePattern();
+  } else {
+    clearTimeout(paramTimer);
+    $('overlay').classList.add('show');
+    paramTimer = setTimeout(() => {
+      computePattern();
+      $('overlay').classList.remove('show');
+    }, 120);
+  }
+}
+
+function setMode(mode){
+  state.mode = mode;
+  state.params = {};
+  MODES[mode].params.forEach(pd => { state.params[pd.key] = pd.value; });
+  $('modeName').textContent = MODES[mode].name;
+  $('formula').textContent = MODES[mode].formula;
+  document.querySelectorAll('#modes button').forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === mode);
+  });
+  buildUI();
+  rebuildScene();
+  computePattern();
+  frameScene();
+}
+
+/* ---------------- 初始化 ---------------- */
+function initThree(){
+  renderer = new THREE.WebGLRenderer({ canvas: $('scene'), antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0b0e14);
+
+  camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 10000);
+  camera.position.set(300, 180, -200);
+
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.minDistance = 5;
+  controls.maxDistance = 5000;
+
+  // 灯光
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x223344, 1.2));
+  const dir = new THREE.DirectionalLight(0xffffff, 2.5);
+  dir.position.set(200, 300, 150);
+  scene.add(dir);
+  // 光源发光球
+  const src = new THREE.Mesh(
+    new THREE.SphereGeometry(1.6, 32, 16),
+    new THREE.MeshBasicMaterial({ color: 0xffffff }));
+  src.position.z = -SOURCE_DIST;
+  scene.add(src);
+
+  // 地面参考网格（位于光轴下方）
+  const grid = new THREE.GridHelper(1200, 60, 0x2b3a55, 0x1a2332);
+  grid.position.y = -22;
+  scene.add(grid);
+}
+
+function initAssets(){
+  patternCanvas = document.createElement('canvas');
+  patternCanvas.width = patternCanvas.height = PATTERN_SIZE;
+  patternCtx = patternCanvas.getContext('2d');
+  patternTex = new THREE.CanvasTexture(patternCanvas);
+  patternTex.colorSpace = THREE.SRGBColorSpace;
+  patternTex.minFilter = THREE.LinearFilter;
+  patternTex.magFilter = THREE.LinearFilter;
+
+  apertureCanvas = document.createElement('canvas');
+  apertureCanvas.width = apertureCanvas.height = PATTERN_SIZE;
+  apertureCtx = apertureCanvas.getContext('2d');
+  apertureTex = new THREE.CanvasTexture(apertureCanvas);
+  apertureTex.colorSpace = THREE.SRGBColorSpace;
+  apertureTex.minFilter = THREE.LinearFilter;
+  apertureTex.magFilter = THREE.LinearFilter;
+}
+
+function animate(){
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+document.querySelectorAll('#modes button').forEach(btn => {
+  btn.addEventListener('click', () => setMode(btn.dataset.mode));
+});
+
+async function main(){
+  try {
+    const three = await import('three');
+    const oc = await import('three/addons/controls/OrbitControls.js');
+    THREE = three;
+    OrbitControls = oc.OrbitControls;
+  } catch (e){
+    $('loaderror').style.display = 'block';
+    console.error(e);
+    return;
+  }
+  initThree();
+  initAssets();
+  setMode('fraunhofer_slit');
+  animate();
+}
+
+main();
+</script>
+</body>
+</html>
