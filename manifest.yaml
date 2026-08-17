@@ -153,6 +153,7 @@ svg:
     harness: "dsh"
     preset: "default"
     date: 2026-08-15
+    note: "对没有多模态的AI来说还是太难了，这个画错了"
 
 scad:
   - file: pantheon-standard.scad
