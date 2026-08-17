@@ -118,6 +118,17 @@ html:
     harness: "pi"
     preset: "anchored-standard"
     date: 2026-08-17
+  - file: fdtd_diffraction.html
+    title: 2D FDTD光学模拟
+    prompt:
+      - "忽略当前目录下的文件。创建单个HTML文件，通过2D FDTD模拟夫琅禾费衍射、双缝干涉、菲涅尔衍射、泊松光斑，用户可以调节参数。直接开发。"
+      - "你的光源/探测屏是垂直的线，但是看起来应该是水平的线吧，你确认下？还是说我理解有问题"
+      - "如果你的屏幕是对的，那么后面的纹理就反了，现在纹理传播的方向看起来就是从上向下传播的，而不是从左向右传播的。"
+    model: "deepseek-v4-pro-0813"
+    effort: "max"
+    harness: "dsh"
+    preset: "anchored-standard"
+    date: 2026-08-17
 
 svg:
   - file: penrose_stairs.svg

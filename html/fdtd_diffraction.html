@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>2D FDTD 衍射模拟：夫琅禾费 / 双缝 / 菲涅尔 / 泊松光斑</title>
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#111722; --panel2:#0e141f; --border:#1f2a3d;
+    --text:#dbe4f0; --muted:#7f8ea6; --accent:#00b7ff; --accent2:#ff4d6b;
+    --green:#00e08a; --amber:#ffc24d;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    padding:16px 20px; min-height:100vh;
+  }
+  h1{font-size:22px; margin-bottom:4px; letter-spacing:.5px;}
+  .sub{color:var(--muted); font-size:13px; margin-bottom:14px;}
+  .main{display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start;}
+  .panel{
+    background:var(--panel); border:1px solid var(--border);
+    border-radius:12px; padding:10px; box-shadow:0 4px 18px rgba(0,0,0,.35);
+  }
+  canvas{display:block; border-radius:6px; background:#000;}
+  .field-panel{flex:1 1 520px; min-width:320px;}
+  .det-panel{flex:1 1 420px; min-width:300px;}
+  .field-panel canvas{width:100%; height:auto; image-rendering:pixelated; image-rendering:crisp-edges;}
+  .det-panel canvas{width:100%; height:auto;}
+  .info{
+    margin-top:8px; font-size:12px; color:var(--muted); min-height:18px;
+    display:flex; flex-wrap:wrap; gap:8px 16px;
+  }
+  .info b{color:var(--text); font-weight:600;}
+  .legend{display:flex; gap:16px; font-size:12px; color:var(--muted); margin-top:6px; align-items:center;}
+  .sw{display:inline-block; width:14px; height:4px; border-radius:2px; margin-right:6px; vertical-align:middle;}
+  .sw.fdtd{background:var(--accent);}
+  .sw.theory{background:var(--accent2);}
+  .controls{
+    margin-top:14px; background:var(--panel); border:1px solid var(--border);
+    border-radius:12px; padding:14px 16px;
+  }
+  .mode-row{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;}
+  .mode-btn{
+    background:var(--panel2); color:var(--text); border:1px solid var(--border);
+    padding:8px 16px; border-radius:20px; cursor:pointer; font-size:14px; transition:.15s;
+  }
+  .mode-btn:hover{border-color:var(--accent);}
+  .mode-btn.active{background:var(--accent); border-color:var(--accent); color:#00131f; font-weight:600;}
+  .slider-grid{
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px 18px;
+  }
+  .slider-grid label{
+    display:flex; flex-direction:column; gap:4px; font-size:13px; color:var(--muted);
+  }
+  .slider-grid .row{display:flex; align-items:center; gap:10px;}
+  .slider-grid input[type=range]{flex:1; accent-color:var(--accent);}
+  .slider-grid output{
+    min-width:70px; text-align:right; color:var(--text); font-variant-numeric:tabular-nums;
+    font-size:13px; background:var(--panel2); border:1px solid var(--border);
+    border-radius:6px; padding:2px 6px;
+  }
+  .btn-row{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:14px;}
+  .btn{
+    background:var(--panel2); color:var(--text); border:1px solid var(--border);
+    padding:8px 18px; border-radius:8px; cursor:pointer; font-size:14px; transition:.15s;
+  }
+  .btn:hover{border-color:var(--accent);}
+  .btn.primary{background:var(--accent); border-color:var(--accent); color:#00131f; font-weight:600;}
+  .btn.warn{background:#2a1a1d; border-color:#5c2430; color:#ffb3bd;}
+  .check{display:flex; align-items:center; gap:6px; font-size:13px; color:var(--muted); cursor:pointer;}
+  .check input{accent-color:var(--accent2);}
+  .note{font-size:12px; color:var(--muted); margin-top:10px; line-height:1.6;}
+</style>
+</head>
+<body>
+<h1>2D FDTD 衍射模拟</h1>
+<div class="sub">二维标量波 FDTD（Yee 蛙跳格式）· 平面波源 · 海绵吸收边界 · 单击模式切换，拖动滑杆调节参数</div>
+
+<div class="main">
+  <div class="panel field-panel">
+    <canvas id="fieldCanvas" width="480" height="320"></canvas>
+    <div class="info" id="fieldInfo">正在初始化…</div>
+  </div>
+  <div class="panel det-panel">
+    <canvas id="detCanvas" width="520" height="320"></canvas>
+    <div class="legend">
+      <span><span class="sw fdtd"></span>FDTD 数值强度</span>
+      <span id="theoryLegend"><span class="sw theory"></span>理论包络</span>
+      <span id="shadowLegend" style="display:none;"><span style="background:rgba(255,194,77,.35);" class="sw"></span>几何阴影</span>
+    </div>
+  </div>
+</div>
+
+<div class="controls">
+  <div class="mode-row">
+    <button class="mode-btn active" data-mode="single">单缝 · 夫琅禾费衍射</button>
+    <button class="mode-btn" data-mode="double">双缝干涉</button>
+    <button class="mode-btn" data-mode="fresnel">单缝 · 菲涅尔衍射</button>
+    <button class="mode-btn" data-mode="poisson">泊松光斑（圆盘）</button>
+  </div>
+
+  <div class="slider-grid">
+    <label>波长 λ
+      <div class="row"><input type="range" id="lam" min="4" max="40" step="0.5" value="10"><output id="lamOut"></output></div>
+    </label>
+    <label id="aLabel">缝宽 a
+      <div class="row"><input type="range" id="a" min="4" max="120" step="1" value="20"><output id="aOut"></output></div>
+    </label>
+    <label id="dLabel" style="display:none;">双缝中心间距 d
+      <div class="row"><input type="range" id="d" min="6" max="200" step="1" value="36"><output id="dOut"></output></div>
+    </label>
+    <label>屏距 z（光阑/圆盘 → 探测屏）
+      <div class="row"><input type="range" id="z" min="10" max="350" step="1" value="300"><output id="zOut"></output></div>
+    </label>
+    <label>运行速度
+      <div class="row"><input type="range" id="speed" min="1" max="30" step="1" value="5"><output id="speedOut"></output></div>
+    </label>
+    <label>源振幅 A
+      <div class="row"><input type="range" id="amp" min="0.5" max="2" step="0.1" value="1"><output id="ampOut"></output></div>
+    </label>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn primary" id="runBtn">暂停</button>
+    <button class="btn" id="stepBtn">单步</button>
+    <button class="btn warn" id="resetBtn">重置</button>
+    <label class="check"><input type="checkbox" id="theoryChk" checked>显示理论曲线</label>
+  </div>
+
+  <div class="note">
+    FDTD 网格：480 × 320，Courant 数 = 1/√2 ≈ 0.707。波沿 x 轴水平向右传播，等相面为竖直线，因此绿色光源线、x=120 处光阑/圆盘、青色探测屏线在 2D 视图中均为竖直线。
+    左侧为 16 格海绵吸收层，平面波由绿色线处（x=20）连续激励。
+    屏/障碍物位于 x=120：单缝与双缝为无限薄金属屏（3 格厚）；泊松模式为不透明圆盘。探测屏（青色线）处显示时间平均强度 I=⟨u²⟩。
+    夫琅禾费区满足菲涅尔数 F = a²/(λz) ≪ 1；F ≥ 0.5 时为菲涅尔近场衍射。理论曲线为标量夫琅禾费公式（单缝 sinc²、双缝 sinc²·cos²）。
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ================= 网格与常数 ================= */
+const NX = 480, NY = 320;
+const C0 = 1.0;
+const DX = 1.0;
+const COURANT = Math.SQRT1_2;
+const CFL2 = COURANT * COURANT;
+const DT = COURANT * DX / C0;
+const AP_X = 120;
+const SRC_X = 20;
+const SPONGE = 16;
+const THICK = 3;
+const CY = (NY - 1) / 2;
+const MAX_Z = NX - 5 - AP_X;
+
+/* ================= 状态 ================= */
+let mode = 'single';
+let running = true;
+let speed = 5;
+let amplitude = 1.0;
+let showTheory = true;
+
+let u, uOld, uNew;
+let alpha, invA, coefCur, dampOld;
+let maskIdx = new Int32Array(0);
+let sumI = new Float64Array(NY);
+let sumCount = 0;
+let n = 0;
+let detX = 420;
+let omega = 0, periodSteps = 1, rampSteps = 1, startStep = 100;
+let displayMax = 0.3;
+
+/* ================= DOM ================= */
+const fieldCanvas = document.getElementById('fieldCanvas');
+const fieldCtx = fieldCanvas.getContext('2d');
+const detCanvas = document.getElementById('detCanvas');
+const detCtx = detCanvas.getContext('2d');
+const fieldInfo = document.getElementById('fieldInfo');
+
+const lamSlider = document.getElementById('lam');
+const aSlider = document.getElementById('a');
+const dSlider = document.getElementById('d');
+const zSlider = document.getElementById('z');
+const speedSlider = document.getElementById('speed');
+const ampSlider = document.getElementById('amp');
+const lamOut = document.getElementById('lamOut');
+const aOut = document.getElementById('aOut');
+const dOut = document.getElementById('dOut');
+const zOut = document.getElementById('zOut');
+const speedOut = document.getElementById('speedOut');
+const ampOut = document.getElementById('ampOut');
+const aLabel = document.getElementById('aLabel');
+const dLabel = document.getElementById('dLabel');
+const runBtn = document.getElementById('runBtn');
+const stepBtn = document.getElementById('stepBtn');
+const resetBtn = document.getElementById('resetBtn');
+const theoryChk = document.getElementById('theoryChk');
+const theoryLegend = document.getElementById('theoryLegend');
+const shadowLegend = document.getElementById('shadowLegend');
+
+/* ================= 颜色表（蓝-黑-红） ================= */
+const palette = new Uint32Array(256);
+for (let i = 0; i < 256; i++) {
+  const t = (i - 128) / 128;
+  let r = 0, g = 0, b = 0;
+  if (t < 0) {
+    b = Math.round(-t * 255);
+    g = Math.round(-t * 30);
+  } else {
+    r = Math.round(t * 255);
+    g = Math.round(t * 25);
+  }
+  palette[i] = (255 << 24) | (b << 16) | (g << 8) | r;
+}
+let fieldImage = null;
+
+/* ================= 初始化数组与吸收层 ================= */
+function buildAlpha() {
+  alpha = new Float32Array(NX * NY);
+  invA = new Float32Array(NX * NY);
+  coefCur = new Float32Array(NX * NY);
+  dampOld = new Float32Array(NX * NY);
+  for (let i = 0; i < NX; i++) {
+    const dxb = Math.min(i, NX - 1 - i);
+    if (dxb < SPONGE) {
+      const a = 0.18 * Math.pow((SPONGE - dxb) / SPONGE, 3);
+      for (let j = 0; j < NY; j++) alpha[i * NY + j] += a;
+    }
+  }
+  for (let j = 0; j < NY; j++) {
+    const dyb = Math.min(j, NY - 1 - j);
+    if (dyb < SPONGE) {
+      const a = 0.18 * Math.pow((SPONGE - dyb) / SPONGE, 3);
+      for (let i = 0; i < NX; i++) alpha[i * NY + j] += a;
+    }
+  }
+  for (let k = 0; k < alpha.length; k++) {
+    const al = Math.min(alpha[k], 0.18);
+    alpha[k] = al;
+    invA[k] = 1 / (1 + al);
+    coefCur[k] = 2 * invA[k];
+    dampOld[k] = (1 - al) * invA[k];
+  }
+}
+
+function allocateFields() {
+  u = new Float32Array(NX * NY);
+  uOld = new Float32Array(NX * NY);
+  uNew = new Float32Array(NX * NY);
+  sumI = new Float64Array(NY);
+}
+
+/* ================= 掩膜（光阑 / 圆盘） ================= */
+function buildMask() {
+  const a = parseFloat(aSlider.value);
+  const d = parseFloat(dSlider.value);
+  const idx = [];
+
+  if (mode === 'poisson') {
+    const r = a / 2, r2 = r * r;
+    for (let i = 0; i < NX; i++) {
+      const xd = i - AP_X;
+      if (Math.abs(xd) > r) continue;
+      const xd2 = xd * xd;
+      for (let j = 0; j < NY; j++) {
+        const yd = j - CY;
+        if (xd2 + yd * yd < r2) idx.push(i * NY + j);
+      }
+    }
+  } else {
+    const half = a / 2;
+    for (let i = AP_X; i < AP_X + THICK && i < NX; i++) {
+      for (let j = 0; j < NY; j++) {
+        let open;
+        if (mode === 'double') {
+          open = (Math.abs(j - (CY - d / 2)) <= half) || (Math.abs(j - (CY + d / 2)) <= half);
+        } else {
+          open = Math.abs(j - CY) <= half;
+        }
+        if (!open) idx.push(i * NY + j);
+      }
+    }
+  }
+  maskIdx = Int32Array.from(idx);
+}
+
+/* ================= 读取参数 ================= */
+function readParams() {
+  const lam = parseFloat(lamSlider.value);
+  const a = parseFloat(aSlider.value);
+  let z = parseFloat(zSlider.value);
+  z = Math.min(MAX_Z, Math.max(5, z));
+  zSlider.value = z;
+
+  const minDet = mode === 'poisson' ? Math.ceil(AP_X + a / 2 + 5) : AP_X + 10;
+  detX = Math.min(NX - 5, Math.max(minDet, Math.round(AP_X + z)));
+
+  omega = 2 * Math.PI * C0 / lam;
+  periodSteps = lam / (C0 * DT);
+  rampSteps = Math.max(4, Math.round(4 * periodSteps));
+  startStep = Math.floor((detX - SRC_X) / (C0 * DT) + 6 * periodSteps);
+
+  buildMask();
+}
+
+/* ================= 重置 ================= */
+function resetSim() {
+  readParams();
+  u.fill(0); uOld.fill(0); uNew.fill(0);
+  n = 0; sumI.fill(0); sumCount = 0;
+  displayMax = 0.3;
+  updateSliderLabels();
+}
+
+/* ================= 模式切换 ================= */
+const MODE_DEFAULTS = {
+  single:  { lam: 10, a: 20, d: 36, z: 300, aName: '缝宽 a',  dVisible: false },
+  double:  { lam: 10, a: 10, d: 36, z: 300, aName: '缝宽 a',  dVisible: true  },
+  fresnel: { lam: 10, a: 24, d: 36, z: 50,  aName: '缝宽 a',  dVisible: false },
+  poisson: { lam: 10, a: 40, d: 36, z: 200, aName: '圆盘直径 D', dVisible: false }
+};
+
+function setMode(m) {
+  mode = m;
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === m);
+  });
+  const cfg = MODE_DEFAULTS[m];
+  lamSlider.value = cfg.lam;
+  aSlider.value = cfg.a;
+  dSlider.value = cfg.d;
+  zSlider.value = cfg.z;
+  aLabel.childNodes[0].nodeValue = cfg.aName + ' ';
+  dLabel.style.display = cfg.dVisible ? 'flex' : 'none';
+  theoryLegend.style.display = (m === 'single' || m === 'double') ? '' : 'none';
+  shadowLegend.style.display = m === 'poisson' ? '' : 'none';
+  resetSim();
+}
+
+/* ================= 单步 FDTD 推进 ================= */
+function step() {
+  n++;
+  const time = n * DT;
+
+  for (let i = 1; i < NX - 1; i++) {
+    const base = i * NY;
+    for (let j = 1; j < NY - 1; j++) {
+      const k = base + j;
+      const lap = u[k - 1] + u[k + 1] + u[k - NY] + u[k + NY] - 4 * u[k];
+      const cfl = CFL2 * lap;
+      uNew[k] = cfl * invA[k] + coefCur[k] * u[k] - dampOld[k] * uOld[k];
+    }
+  }
+
+  for (let j = 0; j < NY; j++) {
+    uNew[j] = u[NY + j];
+    uNew[(NX - 1) * NY + j] = u[(NX - 2) * NY + j];
+  }
+  for (let i = 0; i < NX; i++) {
+    uNew[i * NY] = u[i * NY + 1];
+    uNew[i * NY + NY - 1] = u[i * NY + NY - 2];
+  }
+
+  const env = 0.5 * (1 - Math.cos(Math.PI * Math.min(1, n / rampSteps)));
+  const srcVal = amplitude * env * Math.sin(omega * time);
+  for (let j = 0; j < NY; j++) uNew[SRC_X * NY + j] += srcVal;
+
+  for (let m = 0; m < maskIdx.length; m++) uNew[maskIdx[m]] = 0;
+
+  const tmp = uOld; uOld = u; u = uNew; uNew = tmp;
+
+  if (n > startStep) {
+    const base = detX * NY;
+    for (let j = 0; j < NY; j++) {
+      const v = u[base + j];
+      sumI[j] += v * v;
+    }
+    sumCount++;
+  }
+}
+
+/* ================= 场渲染 ================= */
+function renderField() {
+  if (!fieldImage) fieldImage = fieldCtx.createImageData(NX, NY);
+  const buf = new Uint32Array(fieldImage.data.buffer);
+
+  let maxAbs = 0;
+  for (let k = 0; k < u.length; k++) {
+    const v = Math.abs(u[k]);
+    if (v > maxAbs) maxAbs = v;
+  }
+  if (maxAbs > displayMax) displayMax = maxAbs;
+  else displayMax = Math.max(0.25, displayMax * 0.995, maxAbs);
+
+  // 使用 sqrt 色标增强弱衍射场（大振幅腔场不至于淹没透射波）
+  // 注意：ImageData 按行优先存储，像素 (x=i, y=j) 的索引为 j*NX+i；
+  // 场数组 u 的索引为 i*NY+j，必须做转置映射，否则图案会沿错误方向剪切。
+  const scale = 1 / displayMax;
+  for (let j = 0; j < NY; j++) {
+    const rowBase = j * NX;
+    let src = j;
+    for (let i = 0; i < NX; i++) {
+      const v = u[src] * scale;
+      const t = v >= 0 ? Math.sqrt(v) : -Math.sqrt(-v);
+      let idx = Math.round(t * 127) + 128;
+      if (idx < 0) idx = 0; else if (idx > 255) idx = 255;
+      buf[rowBase + i] = palette[idx];
+      src += NY;
+    }
+  }
+  fieldCtx.putImageData(fieldImage, 0, 0);
+
+  fieldCtx.fillStyle = 'rgba(0,224,138,0.85)';
+  fieldCtx.fillRect(SRC_X - 0.5, 0, 1.2, NY);
+  fieldCtx.fillStyle = 'rgba(0,183,255,0.9)';
+  fieldCtx.fillRect(detX - 0.5, 0, 1.2, NY);
+
+  if (mode === 'poisson') {
+    fieldCtx.beginPath();
+    fieldCtx.arc(AP_X, CY, parseFloat(aSlider.value) / 2, 0, Math.PI * 2);
+    fieldCtx.strokeStyle = 'rgba(255,194,77,0.85)';
+    fieldCtx.lineWidth = 1.5;
+    fieldCtx.stroke();
+  } else {
+    fieldCtx.fillStyle = 'rgba(130,140,160,0.5)';
+    fieldCtx.fillRect(AP_X - 0.5, 0, THICK, NY);
+  }
+
+  fieldCtx.fillStyle = '#ffffff';
+  fieldCtx.font = '11px sans-serif';
+  fieldCtx.fillText('光源', SRC_X - 10, 13);
+  fieldCtx.fillText(mode === 'poisson' ? '圆盘' : '光阑', AP_X - 12, 13);
+  fieldCtx.fillText('探测屏', detX - 14, 13);
+}
+
+/* ================= 探测屏曲线 ================= */
+const Iplot = new Float64Array(NY);
+const Ith = new Float64Array(NY);
+
+function renderDetector() {
+  const W = detCanvas.width, H = detCanvas.height;
+  const mL = 48, mR = 18, mT = 20, mB = 38;
+  const pw = W - mL - mR, ph = H - mT - mB;
+
+  detCtx.fillStyle = '#0d1117';
+  detCtx.fillRect(0, 0, W, H);
+
+  let maxI = 1e-12;
+  for (let j = 0; j < NY; j++) {
+    const v = sumCount > 0 ? sumI[j] / sumCount : 0;
+    Iplot[j] = v;
+    if (v > maxI) maxI = v;
+  }
+
+  detCtx.strokeStyle = '#2a3a50';
+  detCtx.lineWidth = 1;
+  detCtx.beginPath();
+  detCtx.moveTo(mL, mT); detCtx.lineTo(mL, mT + ph); detCtx.lineTo(mL + pw, mT + ph);
+  detCtx.stroke();
+
+  detCtx.fillStyle = '#7f8ea6';
+  detCtx.font = '10px sans-serif';
+  detCtx.textAlign = 'center';
+  for (let j = 0; j <= NY; j += 40) {
+    const x = mL + pw * (j / (NY - 1));
+    detCtx.fillText(String(j), x, mT + ph + 14);
+  }
+  detCtx.textAlign = 'right';
+  detCtx.fillText('1.0', mL - 6, mT + 4);
+  detCtx.fillText('0.0', mL - 6, mT + ph + 4);
+  detCtx.textAlign = 'left';
+  detCtx.fillText('y（格）', mL + pw + 6, mT + ph + 14);
+  detCtx.save();
+  detCtx.translate(14, mT + ph / 2);
+  detCtx.rotate(-Math.PI / 2);
+  detCtx.textAlign = 'center';
+  detCtx.fillText('I（归一化）', 0, 0);
+  detCtx.restore();
+
+  if (mode === 'poisson') {
+    const a = parseFloat(aSlider.value);
+    const x1 = mL + pw * Math.max(0, CY - a / 2) / (NY - 1);
+    const x2 = mL + pw * Math.min(NY - 1, CY + a / 2) / (NY - 1);
+    detCtx.fillStyle = 'rgba(255,194,77,0.10)';
+    detCtx.fillRect(x1, mT, x2 - x1, ph);
+  }
+
+  detCtx.beginPath();
+  const cx = mL + pw * (CY / (NY - 1));
+  detCtx.moveTo(cx, mT);
+  detCtx.lineTo(cx, mT + ph);
+  detCtx.strokeStyle = 'rgba(255,255,255,0.18)';
+  detCtx.setLineDash([4, 4]);
+  detCtx.stroke();
+  detCtx.setLineDash([]);
+
+  if (sumCount > 0) {
+    detCtx.beginPath();
+    for (let j = 0; j < NY; j++) {
+      const x = mL + pw * (j / (NY - 1));
+      const y = mT + ph * (1 - Iplot[j] / maxI);
+      if (j === 0) detCtx.moveTo(x, y); else detCtx.lineTo(x, y);
+    }
+    detCtx.strokeStyle = '#00b7ff';
+    detCtx.lineWidth = 2;
+    detCtx.stroke();
+  } else {
+    detCtx.fillStyle = '#5c6f8a';
+    detCtx.font = '13px sans-serif';
+    detCtx.textAlign = 'center';
+    detCtx.fillText('仿真启动中…', mL + pw / 2, mT + ph / 2);
+  }
+
+  if (mode === 'poisson' && sumCount > 0) {
+    const jc = Math.round(CY);
+    const xc = mL + pw * (jc / (NY - 1));
+    const yc = mT + ph * (1 - Iplot[jc] / maxI);
+    detCtx.beginPath();
+    detCtx.arc(xc, yc, 4, 0, Math.PI * 2);
+    detCtx.strokeStyle = '#ffc24d';
+    detCtx.lineWidth = 1.5;
+    detCtx.stroke();
+    detCtx.fillStyle = '#ffc24d';
+    detCtx.font = '11px sans-serif';
+    detCtx.textAlign = 'left';
+    detCtx.fillText('中心亮斑（泊松）', xc + 7, yc - 5);
+  }
+
+  if (showTheory && (mode === 'single' || mode === 'double') && sumCount > 0) {
+    const lam = parseFloat(lamSlider.value);
+    const a = parseFloat(aSlider.value);
+    const d = parseFloat(dSlider.value);
+    const L = Math.max(1, detX - AP_X);
+    let maxTh = 1e-12;
+    for (let j = 0; j < NY; j++) {
+      const s = (j - CY) / L;
+      let b = Math.PI * a / lam * s;
+      let v = (Math.abs(b) < 1e-9) ? 1 : Math.sin(b) / b;
+      v *= v;
+      if (mode === 'double') {
+        let g = Math.PI * d / lam * s;
+        v *= Math.cos(g) * Math.cos(g);
+      }
+      Ith[j] = v;
+      if (v > maxTh) maxTh = v;
+    }
+    detCtx.beginPath();
+    for (let j = 0; j < NY; j++) {
+      const x = mL + pw * (j / (NY - 1));
+      const y = mT + ph * (1 - Ith[j] / maxTh);
+      if (j === 0) detCtx.moveTo(x, y); else detCtx.lineTo(x, y);
+    }
+    detCtx.strokeStyle = '#ff4d6b';
+    detCtx.lineWidth = 1.6;
+    detCtx.setLineDash([6, 4]);
+    detCtx.stroke();
+    detCtx.setLineDash([]);
+  }
+
+  const names = {
+    single: '单缝夫琅禾费衍射',
+    double: '双缝干涉',
+    fresnel: '单缝菲涅尔衍射',
+    poisson: '泊松光斑（2D 圆盘）'
+  };
+  detCtx.fillStyle = '#dbe4f0';
+  detCtx.font = '12px sans-serif';
+  detCtx.textAlign = 'left';
+  detCtx.fillText(names[mode] + '  探测屏 x=' + detX, mL, 12);
+}
+
+/* ================= 信息栏 ================= */
+function updateSliderLabels() {
+  lamOut.textContent = lamSlider.value + ' 格';
+  aOut.textContent = aSlider.value + ' 格';
+  dOut.textContent = dSlider.value + ' 格';
+  zOut.textContent = zSlider.value + ' 格';
+  speedOut.textContent = speedSlider.value + ' 步/帧';
+  ampOut.textContent = ampSlider.value;
+}
+
+function updateInfo() {
+  const lam = parseFloat(lamSlider.value);
+  const a = parseFloat(aSlider.value);
+  const z = detX - AP_X;
+  let html = '<span>时间步 <b>' + n + '</b></span>';
+  html += '<span>探测屏 x = <b>' + detX + '</b></span>';
+  html += '<span>z = <b>' + z + '</b> 格</span>';
+  if (mode === 'single' || mode === 'fresnel') {
+    const F = a * a / (lam * Math.max(1, z));
+    html += '<span>菲涅尔数 F = a²/(λz) = <b>' + F.toFixed(3) + '</b> ' +
+      (F < 0.5 ? '（远场 / 夫琅禾费区）' : '（近场 / 菲涅尔区）') + '</span>';
+  } else if (mode === 'double') {
+    const d = parseFloat(dSlider.value);
+    const dy = lam * z / Math.max(1, d);
+    html += '<span>条纹间距 Δy ≈ λz/d = <b>' + dy.toFixed(1) + '</b> 格</span>';
+  } else if (mode === 'poisson') {
+    html += '<span>圆盘直径 D = <b>' + a + '</b> 格，几何阴影半径 <b>' + (a / 2).toFixed(1) + '</b> 格</span>';
+    if (sumCount > 0) {
+      let maxI = 1e-12, cenI = 0;
+      for (let j = 0; j < NY; j++) {
+        const v = sumI[j] / sumCount;
+        if (v > maxI) maxI = v;
+      }
+      cenI = sumI[Math.round(CY)] / sumCount;
+      html += '<span>中心亮斑 / 全局最大 ≈ <b>' + (cenI / maxI * 100).toFixed(1) + '%</b>（泊松光斑比周围环暗，属正常）</span>';
+    }
+  }
+  fieldInfo.innerHTML = html;
+}
+
+/* ================= 动画循环 ================= */
+function frame() {
+  requestAnimationFrame(frame);
+  if (running) {
+    for (let s = 0; s < speed; s++) step();
+  }
+  renderField();
+  renderDetector();
+  updateInfo();
+}
+
+/* ================= 事件绑定 ================= */
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => setMode(btn.dataset.mode));
+});
+
+lamSlider.addEventListener('input', () => { updateSliderLabels(); resetSim(); });
+aSlider.addEventListener('input', () => { updateSliderLabels(); resetSim(); });
+dSlider.addEventListener('input', () => { updateSliderLabels(); resetSim(); });
+zSlider.addEventListener('input', () => { updateSliderLabels(); resetSim(); });
+
+speedSlider.addEventListener('input', () => {
+  speed = parseInt(speedSlider.value, 10);
+  updateSliderLabels();
+});
+ampSlider.addEventListener('input', () => {
+  amplitude = parseFloat(ampSlider.value);
+  sumI.fill(0); sumCount = 0;
+  updateSliderLabels();
+});
+
+runBtn.addEventListener('click', () => {
+  running = !running;
+  runBtn.textContent = running ? '暂停' : '运行';
+});
+stepBtn.addEventListener('click', () => {
+  step();
+  renderField();
+  renderDetector();
+  updateInfo();
+});
+resetBtn.addEventListener('click', resetSim);
+theoryChk.addEventListener('change', () => { showTheory = theoryChk.checked; });
+
+/* ================= 启动 ================= */
+zSlider.max = MAX_Z;
+buildAlpha();
+allocateFields();
+setMode('single');
+updateSliderLabels();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
