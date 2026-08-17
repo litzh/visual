@@ -1,0 +1,1403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>模拟电路模拟器</title>
+<style>
+  :root {
+    --bg: #1e1e2e;
+    --panel: #282840;
+    --panel2: #303055;
+    --text: #e0e0e0;
+    --accent: #4da6ff;
+    --danger: #ff5555;
+    --ok: #50c878;
+    --border: #444466;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: flex; flex-direction: column;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    overflow: hidden;
+  }
+  header {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 16px; margin: 0 10px 0 0; white-space: nowrap; }
+  header label { font-size: 12px; white-space: nowrap; }
+  header input, header select {
+    background: #1a1a30; color: var(--text); border: 1px solid var(--border);
+    border-radius: 4px; padding: 4px 6px; font-size: 12px; width: 80px;
+  }
+  header button {
+    background: var(--accent); color: #111; border: none; border-radius: 4px;
+    padding: 6px 12px; font-size: 12px; cursor: pointer; font-weight: 600;
+  }
+  header button.secondary { background: #555; color: #fff; }
+  header button.danger { background: var(--danger); color: #fff; }
+  header button:disabled { opacity: 0.5; cursor: default; }
+  #status { font-size: 12px; color: #ffcc66; min-width: 200px; }
+  #main { display: flex; flex: 1; min-height: 0; }
+  #palette {
+    width: 150px; min-width: 150px; overflow-y: auto; background: var(--panel);
+    border-right: 1px solid var(--border); padding: 10px;
+  }
+  #palette h3 { font-size: 12px; margin: 10px 0 6px; color: #9fd0ff; text-transform: uppercase; }
+  #palette button {
+    display: block; width: 100%; text-align: left; margin: 2px 0; padding: 5px 8px;
+    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 4px; cursor: pointer; font-size: 12px;
+  }
+  #palette button:hover { border-color: var(--accent); }
+  #palette button.active { border-color: var(--accent); background: #3a3a6a; }
+  #canvasWrap { flex: 1; position: relative; min-width: 0; }
+  #schematic { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #sidebar {
+    width: 260px; min-width: 260px; overflow-y: auto; background: var(--panel);
+    border-left: 1px solid var(--border); padding: 10px;
+  }
+  #sidebar h3 { font-size: 13px; margin: 8px 0 6px; color: #9fd0ff; }
+  #sidebar .prop { margin: 6px 0; font-size: 12px; }
+  #sidebar .prop label { display: block; color: #bbb; margin-bottom: 2px; }
+  #sidebar .prop input, #sidebar .prop select {
+    width: 100%; background: #1a1a30; color: var(--text); border: 1px solid var(--border);
+    border-radius: 4px; padding: 4px; font-size: 12px;
+  }
+  #sidebar .prop input[type=checkbox] { width: auto; }
+  #measurements { font-size: 12px; }
+  #measurements .meas { background: var(--panel2); border: 1px solid var(--border); border-radius: 4px; padding: 6px; margin: 4px 0; }
+  #measurements .meas b { color: #ffd479; }
+  #scopePanel {
+    display: none; height: 220px; background: var(--panel); border-top: 1px solid var(--border);
+    position: relative;
+  }
+  #scopePanel.visible { display: block; }
+  #scopePanel .bar { display: flex; align-items: center; gap: 10px; padding: 4px 10px; }
+  #scopePanel .bar span { font-size: 12px; font-weight: 600; color: #9fd0ff; }
+  #scopePanel .bar button { background: #555; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; padding: 3px 10px; }
+  #scopeCanvas { width: 100%; height: calc(100% - 30px); display: block; }
+  .hint { font-size: 11px; color: #999; margin-top: 10px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<header>
+  <h1>⚡ 模拟电路模拟器</h1>
+  <label>仿真时长 (s) <input id="tEnd" type="number" value="0.01" step="0.001" min="1e-9"></label>
+  <label>步数 <input id="steps" type="number" value="1000" step="100" min="2"></label>
+  <button id="btnRun">▶ 运行瞬态仿真</button>
+  <button id="btnStop" class="secondary" disabled>停止</button>
+  <button id="btnScope" class="secondary">示波器</button>
+  <button id="btnBridge" class="secondary">全桥整流示例</button>
+  <button id="btnClear" class="danger">清空</button>
+  <span id="status"></span>
+</header>
+<div id="main">
+  <div id="palette"></div>
+  <div id="canvasWrap">
+    <canvas id="schematic"></canvas>
+  </div>
+  <div id="sidebar">
+    <h3>属性</h3>
+    <div id="props"><div class="hint">点击左侧选择器件，然后在画布上点击放置。<br>用“连线”工具依次点击两个端口建立导线。<br>用“选择”工具拖动器件，点击开关切换状态，Delete 删除选中。</div></div>
+    <h3>测量结果</h3>
+    <div id="measurements"><div class="hint">运行仿真后显示电压表/电流表读数。</div></div>
+  </div>
+</div>
+<div id="scopePanel">
+  <div class="bar">
+    <span>示波器</span>
+    <button id="btnScopeClose">关闭</button>
+  </div>
+  <canvas id="scopeCanvas"></canvas>
+</div>
+<script>
+"use strict";
+// ===================== 基础状态 =====================
+let components = [];
+let wires = [];
+let nextId = 1;
+let nextWireId = 1;
+let tool = 'select';
+let selectedId = null;
+let selectedWire = null;
+let wireStart = null;
+let hoverPort = null;
+let mouse = {x:0, y:0};
+let dragInfo = null;
+let simRunning = false;
+let simTimer = null;
+let simState = null;
+let results = null;
+
+const STORAGE_KEY = 'circuit_simulator_v1';
+const VT = 0.02585;
+const GMIN = 1e-9;
+const SW_ON_R = 1e-4;
+const SW_OFF_R = 1e9;
+const PORT_R = 6;
+const GRID = 20;
+
+// ===================== 器件类型定义 =====================
+const COMP_TYPES = {
+  R:        { name:'电阻', cat:'无源器件', ports:[{label:'+',dx:-40,dy:0},{label:'-',dx:40,dy:0}], params:{R:1000} },
+  C:        { name:'电容', cat:'无源器件', ports:[{label:'+',dx:-40,dy:0},{label:'-',dx:40,dy:0}], params:{C:1e-6, V0:0} },
+  L:        { name:'电感', cat:'无源器件', ports:[{label:'+',dx:-40,dy:0},{label:'-',dx:40,dy:0}], params:{L:1e-3, I0:0} },
+  SW:       { name:'开关 (SPST)', cat:'无源器件', ports:[{label:'1',dx:-40,dy:0},{label:'2',dx:40,dy:0}], params:{}, state:{closed:false} },
+  SW_SPDT:  { name:'单刀双掷', cat:'无源器件', ports:[{label:'C',dx:-40,dy:0},{label:'NC',dx:40,dy:-20},{label:'NO',dx:40,dy:20}], params:{}, state:{toNO:false} },
+  POST:     { name:'接线柱', cat:'无源器件', ports:[{label:'J',dx:0,dy:0}], params:{} },
+  VDC:      { name:'直流电压源', cat:'电源', ports:[{label:'+',dx:-40,dy:0},{label:'-',dx:40,dy:0}], params:{V:5} },
+  IDC:      { name:'直流电流源', cat:'电源', ports:[{label:'+',dx:-40,dy:0},{label:'-',dx:40,dy:0}], params:{I:0.001} },
+  VAC:      { name:'交流电压源', cat:'电源', ports:[{label:'+',dx:-40,dy:0},{label:'-',dx:40,dy:0}], params:{Vamp:1, freq:1000, phase:0} },
+  GND:      { name:'地', cat:'电源', ports:[{label:'GND',dx:0,dy:-20}], params:{} },
+  D:        { name:'二极管', cat:'半导体', ports:[{label:'A',dx:-40,dy:0},{label:'K',dx:40,dy:0}], params:{model:'actual', Is:1e-12, N:1.5, Vf:0, Ron:0.001} },
+  NPN:      { name:'NPN 三极管', cat:'半导体', ports:[{label:'B',dx:-40,dy:0},{label:'C',dx:40,dy:-20},{label:'E',dx:40,dy:20}], params:{Is:1e-14, BF:100, BR:1} },
+  PNP:      { name:'PNP 三极管', cat:'半导体', ports:[{label:'B',dx:-40,dy:0},{label:'C',dx:40,dy:-20},{label:'E',dx:40,dy:20}], params:{Is:1e-14, BF:100, BR:1} },
+  NMOS:     { name:'N沟道 MOSFET', cat:'半导体', ports:[{label:'G',dx:-40,dy:0},{label:'D',dx:40,dy:-20},{label:'S',dx:40,dy:20}], params:{K:1e-4, Vth:1, lambda:0} },
+  PMOS:     { name:'P沟道 MOSFET', cat:'半导体', ports:[{label:'G',dx:-40,dy:0},{label:'D',dx:40,dy:-20},{label:'S',dx:40,dy:20}], params:{K:1e-4, Vth:-1, lambda:0} },
+  VM:       { name:'电压表', cat:'信号与测量', ports:[{label:'V',dx:-30,dy:0}], params:{label:'V'} },
+  AM:       { name:'电流表', cat:'信号与测量', ports:[{label:'+',dx:-40,dy:0},{label:'-',dx:40,dy:0}], params:{label:'A'} },
+  SCOPE:    { name:'示波器', cat:'信号与测量', ports:[{label:'CH1',dx:-40,dy:-12},{label:'CH2',dx:-40,dy:12}], params:{label:'SCOPE'} },
+  FG:       { name:'函数发生器', cat:'信号与测量', ports:[{label:'+',dx:-40,dy:0},{label:'-',dx:40,dy:0}], params:{wave:'sine', A:1, freq:1000, phase:0, offset:0} },
+};
+const CATS = ['工具','无源器件','电源','半导体','信号与测量'];
+const TOOL_NAMES = { select:'选择/移动', wire:'连线' };
+
+// ===================== 画布与绘制 =====================
+const canvas = document.getElementById('schematic');
+const ctx = canvas.getContext('2d');
+const canvasWrap = document.getElementById('canvasWrap');
+const scopeCanvas = document.getElementById('scopeCanvas');
+const scopeCtx = scopeCanvas.getContext('2d');
+const scopePanel = document.getElementById('scopePanel');
+
+function resizeCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvasWrap.clientWidth, h = canvasWrap.clientHeight;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  draw();
+}
+function resizeScope() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = scopeCanvas.clientWidth, h = scopeCanvas.clientHeight;
+  scopeCanvas.width = w * dpr; scopeCanvas.height = h * dpr;
+  // 不设置内联 style，避免隐藏态量出 0px 后覆盖 CSS 尺寸
+  scopeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawScope();
+}
+window.addEventListener('resize', () => { resizeCanvas(); resizeScope(); });
+
+function portPos(comp, idx) {
+  const p = comp.ports[idx];
+  return { x: comp.x + p.dx, y: comp.y + p.dy };
+}
+function key(cid, pi) { return cid + ':' + pi; }
+
+function drawGrid() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  ctx.clearRect(0, 0, w, h);
+  ctx.strokeStyle = '#2a2a3f';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = 0; x <= w; x += GRID) { ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, h); }
+  for (let y = 0; y <= h; y += GRID) { ctx.moveTo(0, y + 0.5); ctx.lineTo(w, y + 0.5); }
+  ctx.stroke();
+}
+function drawWires() {
+  for (const w of wires) {
+    const a = componentById(w.a.c), b = componentById(w.b.c);
+    if (!a || !b) continue;
+    const pa = portPos(a, w.a.p), pb = portPos(b, w.b.p);
+    const isSel = selectedWire && selectedWire.id === w.id;
+    ctx.strokeStyle = isSel ? '#1a5bb5' : '#222';
+    ctx.lineWidth = isSel ? 5 : 3; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke();
+    ctx.strokeStyle = isSel ? '#4da6ff' : '#ccc';
+    ctx.lineWidth = isSel ? 2.5 : 1.5;
+    ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke();
+  }
+  if (wireStart && tool === 'wire') {
+    const a = componentById(wireStart.c);
+    if (a) {
+      const p = portPos(a, wireStart.p);
+      ctx.strokeStyle = '#4da6ff'; ctx.lineWidth = 1.5; ctx.setLineDash([5, 4]);
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(mouse.x, mouse.y); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+}
+function componentById(id) { return components.find(c => c.id === id); }
+function makeWire(a, b) {
+  return { id: nextWireId++, a, b };
+}
+function addWireBetween(a, b) {
+  const exists = wires.some(w =>
+    (w.a.c===a.c && w.a.p===a.p && w.b.c===b.c && w.b.p===b.p) ||
+    (w.a.c===b.c && w.a.p===b.p && w.b.c===a.c && w.b.p===a.p));
+  if (exists) return null;
+  const w = makeWire(a, b);
+  wires.push(w);
+  saveCircuit();
+  return w;
+}
+function deleteWire(id) {
+  wires = wires.filter(w => w.id !== id);
+  if (selectedWire && selectedWire.id === id) selectedWire = null;
+  saveCircuit();
+  buildProps(); draw();
+}
+function distToSegmentSq(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  const len2 = dx*dx + dy*dy;
+  if (len2 < 1e-12) return (px-ax)*(px-ax) + (py-ay)*(py-ay);
+  let t = ((px-ax)*dx + (py-ay)*dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  const qx = ax + t*dx, qy = ay + t*dy;
+  return (px-qx)*(px-qx) + (py-qy)*(py-qy);
+}
+function hitTestWire(mx, my) {
+  const threshold = 6;
+  for (let i=wires.length-1;i>=0;i--) {
+    const w = wires[i];
+    const a = componentById(w.a.c), b = componentById(w.b.c);
+    if (!a || !b) continue;
+    const pa = portPos(a, w.a.p), pb = portPos(b, w.b.p);
+    if (distToSegmentSq(mx, my, pa.x, pa.y, pb.x, pb.y) <= threshold*threshold) return w;
+  }
+  return null;
+}
+function saveCircuit() {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    const data = {
+      components: components.map(c => ({ id: c.id, type: c.type, x: c.x, y: c.y, params: c.params, state: c.state })),
+      wires: wires.map(w => ({ id: w.id, a: w.a, b: w.b }))
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch (e) { /* 忽略存储错误 */ }
+}
+function restoreCircuit() {
+  try {
+    if (typeof localStorage === 'undefined') return false;
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    const comps = [];
+    nextId = 1; nextWireId = 1;
+    for (const c of data.components || []) {
+      const def = COMP_TYPES[c.type];
+      if (!def) continue;
+      const comp = {
+        id: c.id, type: c.type, x: c.x, y: c.y,
+        ports: def.ports,
+        params: Object.assign({}, def.params, c.params || {}),
+        state: Object.assign({}, def.state || {}, c.state || {})
+      };
+      comps.push(comp);
+      if (c.id >= nextId) nextId = c.id + 1;
+    }
+    components = comps;
+    wires = [];
+    for (const w of data.wires || []) {
+      const a = componentById(w.a && w.a.c), b = componentById(w.b && w.b.c);
+      if (!a || !b) continue;
+      if (!a.ports[w.a.p] || !b.ports[w.b.p]) continue;
+      wires.push({ id: w.id || (nextWireId++), a: w.a, b: w.b });
+      if (w.id >= nextWireId) nextWireId = w.id + 1;
+    }
+    return true;
+  } catch (e) { return false; }
+}
+
+function drawComp(comp) {
+  const x = comp.x, y = comp.y;
+  const sel = comp.id === selectedId;
+  ctx.save();
+  ctx.translate(x, y);
+  if (sel) {
+    ctx.strokeStyle = '#4da6ff'; ctx.lineWidth = 2; ctx.setLineDash([4,3]);
+    if (comp.type === 'POST') ctx.strokeRect(-18, -18, 36, 36);
+    else ctx.strokeRect(-55, -32, 110, 64);
+    ctx.setLineDash([]);
+  }
+  ctx.strokeStyle = '#e0e0e0'; ctx.fillStyle = '#e0e0e0'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const pa = comp.params;
+  switch (comp.type) {
+    case 'R': {
+      ctx.beginPath(); ctx.moveTo(-40,0); ctx.lineTo(-30,0);
+      let sx=-30;
+      for (let i=0;i<6;i++) {
+        ctx.lineTo(sx+5,-10); ctx.lineTo(sx+10,0); sx+=10;
+      }
+      ctx.lineTo(40,0); ctx.stroke();
+      break;
+    }
+    case 'C': {
+      ctx.beginPath(); ctx.moveTo(-40,0); ctx.lineTo(-8,0); ctx.moveTo(8,0); ctx.lineTo(40,0);
+      ctx.moveTo(-8,-14); ctx.lineTo(-8,14); ctx.moveTo(8,-14); ctx.lineTo(8,14); ctx.stroke();
+      break;
+    }
+    case 'L': {
+      ctx.beginPath(); ctx.moveTo(-40,0); ctx.lineTo(-20,0);
+      for (let i=0;i<4;i++) { ctx.arc(-15+i*10, 0, 5, Math.PI, 0); }
+      ctx.lineTo(40,0); ctx.stroke();
+      break;
+    }
+    case 'SW': {
+      ctx.beginPath(); ctx.moveTo(-40,0); ctx.lineTo(-14,0); ctx.moveTo(14,0); ctx.lineTo(40,0);
+      ctx.arc(-14,0,3,0,Math.PI*2); ctx.arc(14,0,3,0,Math.PI*2); ctx.stroke();
+      ctx.strokeStyle = sel ? '#4da6ff' : '#ffcc66';
+      ctx.beginPath();
+      if (comp.state.closed) { ctx.moveTo(-11,0); ctx.lineTo(11,0); }
+      else { ctx.moveTo(-11,0); ctx.lineTo(7,-9); }
+      ctx.stroke();
+      break;
+    }
+    case 'SW_SPDT': {
+      ctx.beginPath(); ctx.moveTo(-40,0); ctx.lineTo(-14,0); ctx.moveTo(14,-20); ctx.lineTo(40,-20); ctx.moveTo(14,20); ctx.lineTo(40,20);
+      ctx.arc(-14,0,3,0,Math.PI*2); ctx.arc(14,-20,3,0,Math.PI*2); ctx.arc(14,20,3,0,Math.PI*2); ctx.stroke();
+      ctx.strokeStyle = sel ? '#4da6ff' : '#ffcc66';
+      ctx.beginPath();
+      if (comp.state.toNO) { ctx.moveTo(-11,0); ctx.lineTo(11,20); }
+      else { ctx.moveTo(-11,0); ctx.lineTo(11,-20); }
+      ctx.stroke();
+      break;
+    }
+    case 'VDC': case 'VAC': case 'IDC': case 'FG': {
+      ctx.beginPath(); ctx.moveTo(-40,0); ctx.lineTo(-14,0); ctx.moveTo(14,0); ctx.lineTo(40,0);
+      ctx.arc(0,0,14,0,Math.PI*2); ctx.stroke();
+      ctx.font = '11px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      if (comp.type==='VDC') { ctx.fillText('+', -5,0); ctx.fillText('−',5,0); }
+      else if (comp.type==='VAC') { ctx.fillText('~',0,0); }
+      else if (comp.type==='IDC') { ctx.beginPath(); ctx.moveTo(-8,0); ctx.lineTo(8,0); ctx.moveTo(4,-4); ctx.lineTo(8,0); ctx.lineTo(4,4); ctx.stroke(); }
+      else { ctx.fillText('ƒ',0,0); }
+      break;
+    }
+    case 'GND': {
+      ctx.beginPath(); ctx.moveTo(0,-20); ctx.lineTo(0,0);
+      ctx.moveTo(-14,0); ctx.lineTo(14,0); ctx.moveTo(-9,6); ctx.lineTo(9,6); ctx.moveTo(-4,12); ctx.lineTo(4,12); ctx.stroke();
+      break;
+    }
+    case 'D': {
+      ctx.beginPath(); ctx.moveTo(-40,0); ctx.lineTo(-14,0);
+      ctx.moveTo(-14,-12); ctx.lineTo(-14,12); ctx.lineTo(8,0); ctx.closePath();
+      ctx.moveTo(12,-12); ctx.lineTo(12,12);
+      ctx.moveTo(12,0); ctx.lineTo(40,0); ctx.stroke();
+      break;
+    }
+    case 'NPN': case 'PNP': {
+      ctx.beginPath(); ctx.moveTo(-40,0); ctx.lineTo(-8,0);
+      ctx.moveTo(-8,-20); ctx.lineTo(-8,20);
+      ctx.moveTo(40,-20); ctx.lineTo(8,-20); ctx.lineTo(8,-10);
+      ctx.moveTo(40,20); ctx.lineTo(8,20);
+      ctx.stroke();
+      ctx.beginPath();
+      if (comp.type==='NPN') { ctx.moveTo(8,20); ctx.lineTo(8,10); ctx.moveTo(4,15); ctx.lineTo(8,10); ctx.lineTo(12,15); }
+      else { ctx.moveTo(8,10); ctx.lineTo(8,20); ctx.moveTo(4,15); ctx.lineTo(8,20); ctx.lineTo(12,15); }
+      ctx.stroke();
+      break;
+    }
+    case 'NMOS': case 'PMOS': {
+      ctx.beginPath(); ctx.moveTo(-40,0); ctx.lineTo(-8,0);
+      ctx.moveTo(-8,-20); ctx.lineTo(-8,20);
+      ctx.moveTo(8,-14); ctx.lineTo(8,14);
+      ctx.moveTo(40,-20); ctx.lineTo(8,-20); ctx.lineTo(8,-8);
+      ctx.moveTo(40,20); ctx.lineTo(8,20); ctx.lineTo(8,8);
+      ctx.stroke();
+      ctx.beginPath();
+      if (comp.type==='NMOS') { ctx.moveTo(2,12); ctx.lineTo(12,12); ctx.moveTo(9,9); ctx.lineTo(12,12); ctx.lineTo(9,15); }
+      else { ctx.moveTo(2,12); ctx.lineTo(12,12); ctx.moveTo(12,9); ctx.lineTo(12,12); ctx.lineTo(15,12); }
+      ctx.stroke();
+      break;
+    }
+    case 'VM': {
+      ctx.beginPath(); ctx.moveTo(-30,0); ctx.lineTo(-14,0);
+      ctx.arc(0,0,14,0,Math.PI*2); ctx.stroke();
+      ctx.font = '10px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('V',0,0);
+      break;
+    }
+    case 'AM': {
+      ctx.beginPath(); ctx.moveTo(-40,0); ctx.lineTo(-14,0); ctx.moveTo(14,0); ctx.lineTo(40,0);
+      ctx.arc(0,0,14,0,Math.PI*2); ctx.stroke();
+      ctx.font = '10px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('A',0,0);
+      break;
+    }
+    case 'SCOPE': {
+      ctx.strokeRect(-55,-22,110,44);
+      ctx.font = '10px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('CH1', -32,-12); ctx.fillText('CH2', -32,12);
+      ctx.beginPath(); ctx.moveTo(-32,-12); ctx.lineTo(-48,-12); ctx.moveTo(-32,12); ctx.lineTo(-48,12); ctx.stroke();
+      break;
+    }
+    case 'POST': {
+      ctx.beginPath(); ctx.arc(0,0,5,0,Math.PI*2);
+      ctx.fillStyle = '#ffd479'; ctx.fill();
+      ctx.strokeStyle = '#111'; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-3,-3); ctx.lineTo(3,3); ctx.moveTo(-3,3); ctx.lineTo(3,-3); ctx.stroke();
+      break;
+    }
+  }
+  ctx.fillStyle = '#ddd'; ctx.font = '10px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='top';
+  let label = COMP_TYPES[comp.type].name;
+  if (comp.type==='R') label = 'R ' + fmtEng(pa.R, 'Ω');
+  else if (comp.type==='C') label = 'C ' + fmtEng(pa.C, 'F');
+  else if (comp.type==='L') label = 'L ' + fmtEng(pa.L, 'H');
+  else if (comp.type==='VDC') label = pa.V + ' V';
+  else if (comp.type==='IDC') label = fmtEng(pa.I, 'A');
+  else if (comp.type==='VAC') label = pa.Vamp + ' V ' + pa.freq + ' Hz';
+  else if (comp.type==='FG') label = pa.wave + ' ' + pa.A + ' V';
+  else if (comp.type==='VM') label = pa.label || 'V';
+  else if (comp.type==='AM') label = pa.label || 'A';
+  else if (comp.type==='SCOPE') label = pa.label || 'SCOPE';
+  else if (comp.type==='SW') label = comp.state.closed ? '闭合' : '断开';
+  else if (comp.type==='SW_SPDT') label = comp.state.toNO ? 'C→NO' : 'C→NC';
+  else if (comp.type==='POST') label = '接线柱';
+  ctx.fillText(label, 0, 30);
+  ctx.restore();
+}
+function drawPorts() {
+  for (const comp of components) {
+    for (let i=0;i<comp.ports.length;i++) {
+      const p = portPos(comp, i);
+      const isHover = hoverPort && hoverPort.c === comp.id && hoverPort.p === i;
+      ctx.beginPath(); ctx.arc(p.x, p.y, PORT_R, 0, Math.PI*2);
+      ctx.fillStyle = isHover ? '#4da6ff' : '#fff'; ctx.fill();
+      ctx.strokeStyle = '#111'; ctx.lineWidth = 1.5; ctx.stroke();
+    }
+  }
+}
+function draw() {
+  drawGrid(); drawWires();
+  for (const c of components) drawComp(c);
+  drawPorts();
+}
+function fmtEng(v, unit) {
+  if (v == null || isNaN(v)) return '?';
+  if (v === 0) return '0 ' + unit;
+  const a = Math.abs(v);
+  if (a >= 1e6) return (v/1e6).toPrecision(3) + ' M' + unit;
+  if (a >= 1e3) return (v/1e3).toPrecision(3) + ' k' + unit;
+  if (a >= 1) return v.toPrecision(3) + ' ' + unit;
+  if (a >= 1e-3) return (v*1e3).toPrecision(3) + ' m' + unit;
+  if (a >= 1e-6) return (v*1e6).toPrecision(3) + ' μ' + unit;
+  if (a >= 1e-9) return (v*1e9).toPrecision(3) + ' n' + unit;
+  if (a >= 1e-12) return (v*1e12).toPrecision(3) + ' p' + unit;
+  return v.toExponential(2) + ' ' + unit;
+}
+
+// ===================== 面板构建 =====================
+function buildPalette() {
+  const pal = document.getElementById('palette');
+  pal.innerHTML = '';
+  for (const cat of CATS) {
+    const h = document.createElement('h3'); h.textContent = cat; pal.appendChild(h);
+    if (cat === '工具') {
+      for (const t of ['select','wire']) {
+        const b = document.createElement('button'); b.textContent = TOOL_NAMES[t];
+        b.className = tool === t ? 'active' : '';
+        b.addEventListener('click', () => { tool = t; wireStart=null; selectedId=null; selectedWire=null; buildPalette(); draw(); });
+        pal.appendChild(b);
+      }
+    } else {
+      for (const [type, def] of Object.entries(COMP_TYPES)) {
+        if (def.cat !== cat) continue;
+        const b = document.createElement('button'); b.textContent = def.name;
+        b.className = tool === type ? 'active' : '';
+        b.addEventListener('click', () => { tool = type; wireStart=null; selectedId=null; selectedWire=null; buildPalette(); draw(); });
+        pal.appendChild(b);
+      }
+    }
+  }
+  const hint = document.createElement('div'); hint.className='hint';
+  hint.innerHTML = '提示：<br>· 点击器件按钮后在画布放置<br>· 连线：点两个端口<br>· 选择工具拖动器件/点开关<br>· 点击导线可选中，Delete 或右键删除<br>· 接线柱可作导线汇接节点<br>· 地必须接入电路';
+  pal.appendChild(hint);
+}
+
+// ===================== 属性面板 =====================
+function buildProps() {
+  const div = document.getElementById('props');
+  div.innerHTML = '';
+  if (selectedWire) {
+    div.innerHTML = '<div class="hint">已选中一条导线。</div>';
+    const btn = document.createElement('button');
+    btn.textContent = '删除此导线';
+    btn.style.cssText='background:#b33;color:#fff;border:none;border-radius:4px;padding:5px 10px;cursor:pointer;font-size:12px;margin-top:8px;';
+    btn.addEventListener('click', () => { deleteWire(selectedWire.id); });
+    div.appendChild(btn);
+    return;
+  }
+  const comp = selectedId ? componentById(selectedId) : null;
+  if (!comp) {
+    div.innerHTML = '<div class="hint">点击左侧选择器件，然后在画布上点击放置。<br>用“连线”工具依次点击两个端口建立导线。<br>用“选择”工具拖动器件，点击开关切换状态；点击导线可选中并按 Delete 删除。<br>接线柱可当作导线汇接节点。</div>';
+    return;
+  }
+  const fields = [];
+  const p = comp.params;
+  switch (comp.type) {
+    case 'R': fields.push({k:'R', label:'阻值 (Ω)', type:'number', step:'any'}); break;
+    case 'C': fields.push({k:'C', label:'容值 (F)', type:'number', step:'any'}, {k:'V0', label:'初始电压 (V)', type:'number', step:'any'}); break;
+    case 'L': fields.push({k:'L', label:'感值 (H)', type:'number', step:'any'}, {k:'I0', label:'初始电流 (A)', type:'number', step:'any'}); break;
+    case 'SW': fields.push({k:'closed', label:'闭合', type:'check'}); break;
+    case 'SW_SPDT': fields.push({k:'toNO', label:'C 接到 NO', type:'check'}); break;
+    case 'VDC': fields.push({k:'V', label:'电压 (V)', type:'number', step:'any'}); break;
+    case 'IDC': fields.push({k:'I', label:'电流 (A)', type:'number', step:'any'}); break;
+    case 'VAC': fields.push({k:'Vamp', label:'幅值 (V)', type:'number', step:'any'}, {k:'freq', label:'频率 (Hz)', type:'number', step:'any'}, {k:'phase', label:'相位 (度)', type:'number', step:'any'}); break;
+    case 'FG': fields.push({k:'wave', label:'波形', type:'select', opts:['sine','square','triangle','saw']}, {k:'A', label:'幅值 (V)', type:'number', step:'any'}, {k:'freq', label:'频率 (Hz)', type:'number', step:'any'}, {k:'phase', label:'相位 (度)', type:'number', step:'any'}, {k:'offset', label:'直流偏移 (V)', type:'number', step:'any'}); break;
+    case 'D': fields.push({k:'model', label:'模型', type:'select', opts:['actual','ideal']}, {k:'Is', label:'饱和电流 Is (A)', type:'number', step:'any'}, {k:'N', label:'发射系数 N', type:'number', step:'any'}, {k:'Vf', label:'理想门槛 Vf (V)', type:'number', step:'any'}, {k:'Ron', label:'理想导通 Ron (Ω)', type:'number', step:'any'}); break;
+    case 'NPN': case 'PNP': fields.push({k:'Is', label:'饱和电流 Is (A)', type:'number', step:'any'}, {k:'BF', label:'正向 βF', type:'number', step:'any'}, {k:'BR', label:'反向 βR', type:'number', step:'any'}); break;
+    case 'NMOS': case 'PMOS': fields.push({k:'K', label:'跨导系数 K (A/V²)', type:'number', step:'any'}, {k:'Vth', label:'阈值 Vth (V)', type:'number', step:'any'}, {k:'lambda', label:'沟道调制 λ (1/V)', type:'number', step:'any'}); break;
+    case 'VM': case 'AM': case 'SCOPE': fields.push({k:'label', label:'名称', type:'text'}); break;
+    case 'POST': break;
+  }
+  for (const f of fields) {
+    const wrap = document.createElement('div'); wrap.className = 'prop';
+    const lab = document.createElement('label'); lab.textContent = f.label; wrap.appendChild(lab);
+    let input;
+    if (f.type === 'select') {
+      input = document.createElement('select');
+      for (const o of f.opts) { const op=document.createElement('option'); op.value=o; op.textContent=o; if (p[f.k]===o) op.selected=true; input.appendChild(op); }
+      input.addEventListener('change', () => { comp.params[f.k] = input.value; saveCircuit(); draw(); buildProps(); });
+    } else if (f.type === 'check') {
+      input = document.createElement('input'); input.type='checkbox';
+      const st = f.k==='closed' ? comp.state.closed : comp.state.toNO;
+      input.checked = !!st;
+      input.addEventListener('change', () => { if (f.k==='closed') comp.state.closed = input.checked; else comp.state.toNO = input.checked; saveCircuit(); draw(); buildProps(); });
+    } else {
+      input = document.createElement('input'); input.type = f.type; input.value = p[f.k];
+      if (f.type === 'number') { input.step = f.step || 'any'; }
+      input.addEventListener('input', () => { const v = input.type==='number' ? parseFloat(input.value) : input.value; if (!(input.type==='number' && isNaN(v))) { comp.params[f.k]=v; saveCircuit(); draw(); } });
+    }
+    wrap.appendChild(input); div.appendChild(wrap);
+  }
+  const btn = document.createElement('button');
+  btn.textContent = '删除此器件'; btn.style.cssText='background:#b33;color:#fff;border:none;border-radius:4px;padding:5px 10px;cursor:pointer;font-size:12px;margin-top:8px;';
+  btn.addEventListener('click', () => { deleteComponent(comp.id); });
+  div.appendChild(btn);
+}
+
+// ===================== 交互 =====================
+function snap(v) { return Math.round(v / GRID) * GRID; }
+function hitTestPort(mx, my) {
+  for (const comp of components) {
+    for (let i=0;i<comp.ports.length;i++) {
+      const p = portPos(comp, i);
+      if ((mx-p.x)**2 + (my-p.y)**2 <= (PORT_R+5)**2) return {c:comp.id, p:i};
+    }
+  }
+  return null;
+}
+function hitTestComponent(mx, my) {
+  for (let i=components.length-1;i>=0;i--) {
+    const c = components[i];
+    let w=110, h=64;
+    if (c.type==='GND') { w=60; h=60; }
+    if (c.type==='VM') { w=80; h=60; }
+    if (c.type==='POST') { w=30; h=30; }
+    if (Math.abs(mx-c.x) <= w/2 && Math.abs(my-c.y) <= h/2) return c;
+  }
+  return null;
+}
+function deleteComponent(id) {
+  components = components.filter(c => c.id !== id);
+  const connectedBefore = wires.some(w => (w.a.c === id || w.b.c === id) && selectedWire && selectedWire.id === w.id);
+  wires = wires.filter(w => w.a.c !== id && w.b.c !== id);
+  if (selectedId === id) selectedId = null;
+  if (connectedBefore) selectedWire = null;
+  saveCircuit();
+  buildProps(); draw();
+}
+function addComponent(type, x, y) {
+  const def = COMP_TYPES[type];
+  const comp = { id: nextId++, type, x: snap(x), y: snap(y), ports: def.ports, params: Object.assign({}, def.params), state: def.state ? Object.assign({}, def.state) : {} };
+  components.push(comp);
+  selectedId = comp.id;
+  selectedWire = null;
+  saveCircuit();
+  buildProps(); draw();
+  return comp;
+}
+function toggleSwitch(comp) {
+  if (comp.type === 'SW') comp.state.closed = !comp.state.closed;
+  else if (comp.type === 'SW_SPDT') comp.state.toNO = !comp.state.toNO;
+  saveCircuit();
+  buildProps(); draw();
+}
+
+canvas.addEventListener('mousedown', e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  mouse.x = mx; mouse.y = my;
+  if (simRunning) {
+    if (tool === 'select') {
+      const c = hitTestComponent(mx, my);
+      if (c && (c.type==='SW' || c.type==='SW_SPDT')) { toggleSwitch(c); }
+    }
+    return;
+  }
+  if (tool === 'select') {
+    const c = hitTestComponent(mx, my);
+    if (c) {
+      selectedId = c.id;
+      selectedWire = null;
+      dragInfo = { c, dx: mx - c.x, dy: my - c.y, moved: false };
+    } else {
+      const w = hitTestWire(mx, my);
+      selectedId = null;
+      selectedWire = w || null;
+      dragInfo = null;
+    }
+    buildProps(); draw();
+  } else if (tool === 'wire') {
+    const hit = hitTestPort(mx, my);
+    if (hit) {
+      if (!wireStart) { wireStart = hit; }
+      else if (wireStart.c === hit.c && wireStart.p === hit.p) { wireStart = null; }
+      else {
+        addWireBetween(wireStart, hit);
+        wireStart = null;
+      }
+      draw();
+    } else {
+      // 在连线工具下点击空白处：如果点中已有导线，则选中导线（可再按 Delete 删除）
+      const w = hitTestWire(mx, my);
+      selectedId = null;
+      selectedWire = w || null;
+      wireStart = null;
+      buildProps(); draw();
+    }
+  } else if (COMP_TYPES[tool]) {
+    addComponent(tool, mx, my);
+  }
+});
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  mouse.x = mx; mouse.y = my;
+  if (dragInfo) {
+    dragInfo.moved = true;
+    dragInfo.c.x = snap(mx - dragInfo.dx);
+    dragInfo.c.y = snap(my - dragInfo.dy);
+    draw();
+    return;
+  }
+  const hit = hitTestPort(mx, my);
+  if (hit && tool === 'wire') { hoverPort = hit; draw(); }
+  else if (hoverPort) { hoverPort = null; draw(); }
+});
+canvas.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  const w = hitTestWire(mx, my);
+  if (w) {
+    deleteWire(w.id);
+  } else {
+    const c = hitTestComponent(mx, my);
+    if (c) { selectedId = c.id; selectedWire = null; buildProps(); draw(); }
+  }
+});
+canvas.addEventListener('mouseup', () => {
+  if (dragInfo) {
+    const c = dragInfo.c;
+    const moved = dragInfo.moved;
+    dragInfo = null;
+    if (moved) {
+      saveCircuit();
+    } else if ((c.type==='SW' || c.type==='SW_SPDT') && tool==='select') {
+      toggleSwitch(c);
+    }
+  }
+});
+window.addEventListener('keydown', e => {
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    if (!simRunning && document.activeElement === document.body) {
+      if (selectedWire) { e.preventDefault(); deleteWire(selectedWire.id); }
+      else if (selectedId != null) { e.preventDefault(); deleteComponent(selectedId); }
+    }
+  }
+  if (e.key === 'Escape') { tool='select'; wireStart=null; selectedId=null; selectedWire=null; buildPalette(); buildProps(); draw(); }
+});
+
+// ===================== 电路网络解析 =====================
+function resolveNodes(comps, wiresArr) {
+  const parent = new Map();
+  const find = k => { let r=k; while(parent.get(r)!==r) r=parent.get(r); let c=k; while(parent.get(c)!==c){const n=parent.get(c); parent.set(c,r); c=n;} return r; };
+  const union = (a,b) => { const ra=find(a), rb=find(b); if(ra!==rb) parent.set(ra,rb); };
+  for (const c of comps) for (let i=0;i<c.ports.length;i++) parent.set(key(c.id,i), key(c.id,i));
+  for (const w of wiresArr) {
+    const a = comps.find(c => c.id === w.a.c), b = comps.find(c => c.id === w.b.c);
+    if (a && b) union(key(w.a.c,w.a.p), key(w.b.c,w.b.p));
+  }
+  const groundRoots = new Set();
+  for (const c of comps) if (c.type==='GND') groundRoots.add(find(key(c.id,0)));
+  if (groundRoots.size === 0) return { error: '请先放置并连接地(GND)。' };
+  const rootToNode = new Map();
+  for (const r of groundRoots) rootToNode.set(r, 0);
+  let next = 1;
+  for (const c of comps) for (let i=0;i<c.ports.length;i++) {
+    const r = find(key(c.id,i));
+    if (!rootToNode.has(r)) rootToNode.set(r, next++);
+  }
+  const compNodes = new Map();
+  for (const c of comps) compNodes.set(c.id, c.ports.map((p,i) => rootToNode.get(find(key(c.id,i)))));
+  let groundUsed = false;
+  for (const c of comps) {
+    if (c.type==='GND' || c.type==='VM' || c.type==='SCOPE') continue;
+    if ((compNodes.get(c.id)||[]).includes(0)) { groundUsed = true; break; }
+  }
+  if (!groundUsed) return { error: '地(GND)没有连接到任何器件节点，请把地接入电路。' };
+  return { nodeCount: next-1, compNodes, rootToNode };
+}
+
+// ===================== MNA 引擎 =====================
+function prepareSystem(comps, resolved, mode) {
+  const vsList = [];
+  const vsIndex = new Map();
+  for (const c of comps) {
+    const n = resolved.compNodes.get(c.id);
+    if (c.type==='VDC' || c.type==='VAC' || c.type==='FG' || c.type==='AM') {
+      vsIndex.set(c.id, vsList.length);
+      vsList.push({ compId: c.id, nodePlus: n[0], nodeMinus: n[1] });
+    } else if (c.type==='C' && mode==='dc') {
+      vsIndex.set(c.id, vsList.length);
+      vsList.push({ compId: c.id, nodePlus: n[0], nodeMinus: n[1] });
+    }
+  }
+  return { resolved, compNodes: resolved.compNodes, vsList, vsIndex, size: resolved.nodeCount + vsList.length };
+}
+
+function sourceVoltageValue(comp, t, srcScale) {
+  const sc = srcScale === undefined ? 1 : srcScale;
+  const p = comp.params;
+  switch (comp.type) {
+    case 'VDC': return p.V * sc;
+    case 'VAC': {
+      const th = 2*Math.PI*(p.freq*t + p.phase/360);
+      return p.Vamp * Math.sin(th) * sc;
+    }
+    case 'FG': {
+      const th = 2*Math.PI*(p.freq*t + p.phase/360);
+      const pp = ((p.freq*t + p.phase/360) % 1 + 1) % 1;
+      switch (p.wave) {
+        case 'sine': return (p.A*Math.sin(th) + p.offset) * sc;
+        case 'square': return (p.A*Math.sign(Math.sin(th)) + p.offset) * sc;
+        case 'triangle': return (p.A*(1 - 4*Math.abs(pp-0.5)) + p.offset) * sc;
+        case 'saw': return (p.A*(2*pp - 1) + p.offset) * sc;
+        default: return 0;
+      }
+    }
+    case 'AM': return 0;
+    case 'C': return p.V0 * sc;
+    default: return 0;
+  }
+}
+function currentSourceValue(comp, srcScale) {
+  const sc = srcScale === undefined ? 1 : srcScale;
+  if (comp.type === 'IDC') return comp.params.I * sc;
+  return 0;
+}
+
+function pnCurrent(vd, Is, N) {
+  const vj = vd / (N * VT);
+  let ev;
+  if (vj > 50) { ev = Math.exp(50) * (1 + (vj - 50)); }
+  else if (vj < -50) { ev = 0; }
+  else { ev = Math.exp(vj); }
+  return Is * (ev - 1);
+}
+function diodeCurrent(vd, p) {
+  if (p.model === 'ideal') {
+    const d = vd - (p.Vf || 0);
+    const eps = 1e-6;
+    const smooth = Math.sqrt(d*d + eps*eps);
+    return (smooth + d) / (2 * Math.max(p.Ron || 1e-3, 1e-9));
+  }
+  return pnCurrent(vd, p.Is, p.N || 1);
+}
+function bjtCurrents(comp, vB, vC, vE) {
+  const p = comp.params;
+  const Is = p.Is, BF = p.BF, BR = p.BR;
+  const aF = BF / (BF + 1), aR = BR / (BR + 1);
+  if (comp.type === 'NPN') {
+    const IF = pnCurrent(vB - vE, Is, 1);
+    const IR = pnCurrent(vB - vC, Is, 1);
+    const IC = aF*IF - IR;
+    const IE = -IF + aR*IR;
+    const IB = (1-aF)*IF + (1-aR)*IR;
+    return {IC, IE, IB};
+  } else {
+    const IF = pnCurrent(vE - vB, Is, 1);
+    const IR = pnCurrent(vC - vB, Is, 1);
+    const IE = IF - aR*IR;
+    const IC = -aF*IF + IR;
+    const IB = -(1-aF)*IF - (1-aR)*IR;
+    return {IC, IE, IB};
+  }
+}
+function mosOn(vgs, vds, K, Vth, lambda) {
+  if (vds < 0) return -mosOn(vgs - vds, -vds, K, Vth, lambda);
+  if (vgs <= Vth) return 0;
+  const vov = vgs - Vth;
+  let id;
+  if (vds <= vov) id = K * (vov*vds - 0.5*vds*vds);
+  else id = 0.5 * K * vov * vov;
+  return id * (1 + lambda*vds);
+}
+function nmosCurrent(vg, vd, vs, p) {
+  return mosOn(vg - vs, vd - vs, p.K, p.Vth, p.lambda);
+}
+function pmosCurrent(vg, vd, vs, p) {
+  return -mosOn(vs - vg, vs - vd, p.K, -p.Vth, p.lambda);
+}
+
+function evalResidual(x, sys, comps, t, dt, mode, prevCap, prevInd, srcScale) {
+  const sc = srcScale === undefined ? 1 : srcScale;
+  const n = sys.size;
+  const f = new Float64Array(n);
+  const N0 = sys.resolved.nodeCount;
+  const V = node => node === 0 ? 0 : x[node-1];
+  const addI = (node, val) => { if (node !== 0) f[node-1] += val; };
+  for (let node=1; node<=N0; node++) f[node-1] += x[node-1] * GMIN;
+  for (const c of comps) {
+    const nodes = sys.compNodes.get(c.id);
+    switch (c.type) {
+      case 'R': {
+        const g = 1 / Math.max(c.params.R, 1e-12);
+        const i = g * (V(nodes[0]) - V(nodes[1]));
+        addI(nodes[0], i); addI(nodes[1], -i);
+        break;
+      }
+      case 'SW': {
+        const R = c.state.closed ? SW_ON_R : SW_OFF_R;
+        const g = 1/R;
+        const i = g * (V(nodes[0]) - V(nodes[1]));
+        addI(nodes[0], i); addI(nodes[1], -i);
+        break;
+      }
+      case 'SW_SPDT': {
+        const rNC = c.state.toNO ? SW_OFF_R : SW_ON_R;
+        const rNO = c.state.toNO ? SW_ON_R : SW_OFF_R;
+        let i = (V(nodes[0]) - V(nodes[1])) / rNC;
+        addI(nodes[0], i); addI(nodes[1], -i);
+        i = (V(nodes[0]) - V(nodes[2])) / rNO;
+        addI(nodes[0], i); addI(nodes[2], -i);
+        break;
+      }
+      case 'C': {
+        if (mode === 'transient') {
+          const C = Math.max(c.params.C, 1e-15);
+          const geq = C / dt;
+          const prev = prevCap.get(c.id) || 0;
+          const i = geq * (V(nodes[0]) - V(nodes[1])) - geq * prev;
+          addI(nodes[0], i); addI(nodes[1], -i);
+        } else {
+          const idx = sys.vsIndex.get(c.id);
+          const iv = x[N0 + idx];
+          addI(nodes[0], iv); addI(nodes[1], -iv);
+        }
+        break;
+      }
+      case 'L': {
+        if (mode === 'transient') {
+          const L = Math.max(c.params.L, 1e-15);
+          const geq = dt / L;
+          const i = geq * (V(nodes[0]) - V(nodes[1])) + (prevInd.get(c.id) || 0);
+          addI(nodes[0], i); addI(nodes[1], -i);
+        } else {
+          const I0 = c.params.I0 || 0;
+          addI(nodes[0], I0); addI(nodes[1], -I0);
+        }
+        break;
+      }
+      case 'VDC': case 'VAC': case 'FG': case 'AM': {
+        const idx = sys.vsIndex.get(c.id);
+        const iv = x[N0 + idx];
+        addI(nodes[0], iv); addI(nodes[1], -iv);
+        break;
+      }
+      case 'IDC': {
+        const I = currentSourceValue(c, sc);
+        addI(nodes[0], I); addI(nodes[1], -I);
+        break;
+      }
+      case 'D': {
+        const vd = V(nodes[0]) - V(nodes[1]);
+        const id = diodeCurrent(vd, c.params);
+        addI(nodes[0], id); addI(nodes[1], -id);
+        break;
+      }
+      case 'NPN': case 'PNP': {
+        const vB = V(nodes[0]), vC = V(nodes[1]), vE = V(nodes[2]);
+        const cur = bjtCurrents(c, vB, vC, vE);
+        addI(nodes[0], cur.IB); addI(nodes[1], cur.IC); addI(nodes[2], cur.IE);
+        break;
+      }
+      case 'NMOS': {
+        const vG = V(nodes[0]), vD = V(nodes[1]), vS = V(nodes[2]);
+        const id = nmosCurrent(vG, vD, vS, c.params);
+        addI(nodes[1], id); addI(nodes[2], -id);
+        break;
+      }
+      case 'PMOS': {
+        const vG = V(nodes[0]), vD = V(nodes[1]), vS = V(nodes[2]);
+        const id = pmosCurrent(vG, vD, vS, c.params);
+        addI(nodes[1], id); addI(nodes[2], -id);
+        break;
+      }
+    }
+  }
+  for (let k=0;k<sys.vsList.length;k++) {
+    const vs = sys.vsList[k];
+    const comp = componentById(vs.compId);
+    const val = sourceVoltageValue(comp, t, sc);
+    f[N0 + k] += V(vs.nodePlus) - V(vs.nodeMinus) - val;
+  }
+  return f;
+}
+
+function maxAbs(f) { let m=0; for (let i=0;i<f.length;i++) { const a=Math.abs(f[i]); if (a>m) m=a; } return m; }
+
+function buildJacobian(x, f, sys, comps, t, dt, mode, prevCap, prevInd, srcScale) {
+  const n = x.length;
+  const J = new Array(n);
+  for (let i=0;i<n;i++) J[i] = new Float64Array(n);
+  for (let j=0;j<n;j++) {
+    const h = 1e-8 * Math.max(1, Math.abs(x[j]));
+    const xp = new Float64Array(x);
+    xp[j] += h;
+    const fp = evalResidual(xp, sys, comps, t, dt, mode, prevCap, prevInd, srcScale);
+    for (let i=0;i<n;i++) J[i][j] = (fp[i] - f[i]) / h;
+  }
+  return J;
+}
+
+function solveLinear(A, b) {
+  const n = b.length;
+  const M = new Array(n);
+  for (let i=0;i<n;i++) {
+    M[i] = new Float64Array(n+1);
+    for (let j=0;j<n;j++) M[i][j] = A[i][j];
+    M[i][n] = b[i];
+  }
+  for (let col=0; col<n; col++) {
+    let piv = col;
+    for (let r=col+1; r<n; r++) if (Math.abs(M[r][col]) > Math.abs(M[piv][col])) piv = r;
+    if (Math.abs(M[piv][col]) < 1e-14) throw new Error('矩阵奇异：请检查电路是否存在悬浮节点或理想电压源回路。');
+    if (piv !== col) { const tmp = M[piv]; M[piv] = M[col]; M[col] = tmp; }
+    const pv = M[col][col];
+    for (let c=col; c<=n; c++) M[col][c] /= pv;
+    for (let r=0; r<n; r++) {
+      if (r === col) continue;
+      const fac = M[r][col];
+      if (fac !== 0) for (let c=col; c<=n; c++) M[r][c] -= fac * M[col][c];
+    }
+  }
+  const x = new Float64Array(n);
+  for (let i=0;i<n;i++) x[i] = M[i][n];
+  return x;
+}
+
+function solveNewton(sys, comps, x0, t, dt, mode, prevCap, prevInd, srcScale) {
+  const sc = srcScale === undefined ? 1 : srcScale;
+  let x = new Float64Array(x0);
+  const tol = 1e-8, maxIter = 60;
+  let norm = Infinity;
+  for (let iter=0; iter<maxIter; iter++) {
+    const f = evalResidual(x, sys, comps, t, dt, mode, prevCap, prevInd, sc);
+    norm = maxAbs(f);
+    if (norm < tol) return { x, converged: true };
+    const J = buildJacobian(x, f, sys, comps, t, dt, mode, prevCap, prevInd, sc);
+    const negf = new Float64Array(f.length);
+    for (let i=0;i<f.length;i++) negf[i] = -f[i];
+    let delta;
+    try { delta = solveLinear(J, negf); }
+    catch (err) { return { x, converged: false, error: err.message }; }
+    let accepted = false;
+    let bestX = x, bestNorm = norm;
+    let lambda = 1;
+    for (let s=0; s<14; s++) {
+      const xn = new Float64Array(x.length);
+      for (let i=0;i<x.length;i++) xn[i] = x[i] + lambda*delta[i];
+      const fn = evalResidual(xn, sys, comps, t, dt, mode, prevCap, prevInd, sc);
+      const nn = maxAbs(fn);
+      if (nn < bestNorm) { bestNorm = nn; bestX = xn; }
+      if (nn < norm) { accepted = true; x = xn; norm = nn; break; }
+      lambda *= 0.5;
+    }
+    if (!accepted) {
+      if (bestNorm < norm) { x = bestX; norm = bestNorm; }
+      else return { x, converged: false, norm };
+    }
+    if (norm < tol) return { x, converged: true };
+  }
+  return { x, converged: false, norm };
+}
+
+function solveNewtonStepped(sys, comps, x0, t, dt, mode, prevCap, prevInd) {
+  let res = solveNewton(sys, comps, x0, t, dt, mode, prevCap, prevInd, 1);
+  if (res.converged) return res;
+  // 全电源求解失败时，使用源步进(同伦)提高非线性电路收敛性
+  const scales = [0.02, 0.05, 0.1, 0.2, 0.4, 0.7, 1.0];
+  let x = new Float64Array(x0);
+  for (const s of scales) {
+    res = solveNewton(sys, comps, x, t, dt, mode, prevCap, prevInd, s);
+    if (!res.converged) return res;
+    x = res.x;
+  }
+  return res;
+}
+
+// ===================== 仿真控制 =====================
+function setStatus(msg, color) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.style.color = color || '#ffcc66';
+}
+function collectMeasurementChannels(sys) {
+  const scope = [], vm = [], am = [];
+  for (const c of components) {
+    const nodes = sys.compNodes.get(c.id);
+    if (c.type === 'SCOPE') {
+      scope.push({ label: (c.params.label||'SCOPE') + ' CH1', node: nodes[0], data: [] });
+      scope.push({ label: (c.params.label||'SCOPE') + ' CH2', node: nodes[1], data: [] });
+    } else if (c.type === 'VM') {
+      vm.push({ label: c.params.label || 'V', node: nodes[0], data: [] });
+    } else if (c.type === 'AM') {
+      const idx = sys.vsIndex.get(c.id);
+      am.push({ label: c.params.label || 'A', idx, data: [] });
+    }
+  }
+  return { scope, vm, am };
+}
+function startSimulation() {
+  if (simRunning) return;
+  setStatus('正在准备仿真...', '#ffcc66');
+  const tEnd = parseFloat(document.getElementById('tEnd').value);
+  const steps = parseInt(document.getElementById('steps').value, 10);
+  if (!(tEnd > 0) || !(steps >= 2)) { setStatus('请输入有效的仿真时长和步数。', '#ff5555'); return; }
+  const resolution = resolveNodes(components, wires);
+  if (resolution.error) { setStatus(resolution.error, '#ff5555'); return; }
+  const sys = prepareSystem(components, resolution, 'transient');
+  if (sys.size === 0) { setStatus('电路为空，请先放置器件。', '#ff5555'); return; }
+  const dt = tEnd / steps;
+  for (const c of components) {
+    if ((c.type==='VAC'||c.type==='FG') && c.params.freq > 0) {
+      if (dt > 1/(10*c.params.freq)) {
+        setStatus('警告：步长过大，无法正确采样 ' + c.params.freq + ' Hz 波形，请增加步数或缩短时长。', '#ff8888');
+      }
+    }
+  }
+  const prevCap = new Map(), prevInd = new Map();
+  for (const c of components) {
+    if (c.type==='C') prevCap.set(c.id, c.params.V0 || 0);
+    if (c.type==='L') prevInd.set(c.id, c.params.I0 || 0);
+  }
+  const meas = collectMeasurementChannels(sys);
+  results = { times: [], scope: meas.scope, vm: meas.vm, am: meas.am };
+  simState = {
+    sys, dt, steps, stepIndex: 0, t: 0,
+    x: new Float64Array(sys.size),
+    prevCap, prevInd
+  };
+  simRunning = true;
+  document.getElementById('btnRun').disabled = true;
+  document.getElementById('btnStop').disabled = false;
+  setStatus('仿真运行中... 0/' + steps, '#4da6ff');
+  simTimer = setTimeout(simulateChunk, 0);
+}
+function simulateChunk() {
+  if (!simRunning || !simState) return;
+  const chunk = 50;
+  const sys = simState.sys;
+  for (let k=0; k<chunk && simState.stepIndex < simState.steps; k++) {
+    simState.stepIndex++;
+    simState.t = simState.stepIndex * simState.dt;
+    const res = solveNewtonStepped(sys, components, simState.x, simState.t, simState.dt, 'transient', simState.prevCap, simState.prevInd);
+    if (!res.converged) {
+      finishSimulation('仿真未收敛 (t=' + simState.t.toExponential(3) + 's, 残差=' + (res.norm||0).toExponential(2) + ')' + (res.error ? ' ' + res.error : ''), '#ff5555');
+      return;
+    }
+    simState.x = res.x;
+    const v = n => n===0 ? 0 : simState.x[n-1];
+    for (const c of components) {
+      const nodes = sys.compNodes.get(c.id);
+      if (c.type === 'C') {
+        simState.prevCap.set(c.id, v(nodes[0]) - v(nodes[1]));
+      }
+      if (c.type === 'L') {
+        const L = Math.max(c.params.L, 1e-15);
+        const i = (simState.dt/L)*(v(nodes[0])-v(nodes[1])) + (simState.prevInd.get(c.id)||0);
+        simState.prevInd.set(c.id, i);
+      }
+    }
+    recordStep();
+  }
+  if (simState.stepIndex < simState.steps) {
+    setStatus('仿真运行中... ' + simState.stepIndex + '/' + simState.steps, '#4da6ff');
+    simTimer = setTimeout(simulateChunk, 0);
+  } else {
+    finishSimulation('仿真完成，共 ' + simState.steps + ' 步。', '#50c878');
+  }
+}
+function recordStep() {
+  const t = simState.t;
+  results.times.push(t);
+  const V = node => node === 0 ? 0 : simState.x[node-1];
+  for (const ch of results.scope) ch.data.push(V(ch.node));
+  for (const vm of results.vm) vm.data.push(V(vm.node));
+  const N0 = simState.sys.resolved.nodeCount;
+  for (const am of results.am) am.data.push(simState.x[N0 + am.idx]);
+}
+function finishSimulation(msg, color) {
+  simRunning = false;
+  if (simTimer) { clearTimeout(simTimer); simTimer = null; }
+  document.getElementById('btnRun').disabled = false;
+  document.getElementById('btnStop').disabled = true;
+  setStatus(msg, color || '#50c878');
+  updateMeasurements();
+  if (results && results.scope.length) scopePanel.classList.add('visible');
+  resizeScope();
+}
+function stopSimulation() {
+  if (simRunning) finishSimulation('仿真已停止。', '#ffcc66');
+}
+function rms(arr) {
+  if (!arr.length) return 0;
+  let s=0; for (let i=0;i<arr.length;i++) s += arr[i]*arr[i];
+  return Math.sqrt(s/arr.length);
+}
+function pkpk(arr) {
+  if (!arr.length) return 0;
+  let mn=Infinity, mx=-Infinity;
+  for (const v of arr) { if (v<mn) mn=v; if (v>mx) mx=v; }
+  return mx-mn;
+}
+function fmt(v, unit) {
+  if (v == null || isNaN(v)) return '?';
+  if (v === 0) return '0 ' + unit;
+  const a = Math.abs(v);
+  const p = a>=1 ? (a>=1e6?1e6:a>=1e3?1e3:1) : (a>=1e-3?1e-3:a>=1e-6?1e-6:a>=1e-9?1e-9:1e-12);
+  const prefixes = {1:'',1e3:'k',1e6:'M',1e-3:'m',1e-6:'μ',1e-9:'n',1e-12:'p'};
+  return (v/p).toPrecision(4) + ' ' + (prefixes[p]||'') + unit;
+}
+function fmtAxisVolt(v, range) {
+  if (v == null || isNaN(v)) return '?';
+  const a = Math.abs(range || v);
+  let div = 1, unit = 'V';
+  if (a === 0) { div = 1; unit = 'V'; }
+  else if (a >= 1) { div = 1; unit = 'V'; }
+  else if (a >= 1e-3) { div = 1e-3; unit = 'mV'; }
+  else if (a >= 1e-6) { div = 1e-6; unit = 'μV'; }
+  else { div = 1e-9; unit = 'nV'; }
+  return (v/div).toPrecision(4) + ' ' + unit;
+}
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function updateMeasurements() {
+  const div = document.getElementById('measurements');
+  div.innerHTML = '';
+  if (!results) return;
+  if (results.vm.length === 0 && results.am.length === 0) {
+    div.innerHTML = '<div class="hint">放置电压表/电流表以显示读数。</div>';
+    return;
+  }
+  for (const vm of results.vm) {
+    const d = vm.data;
+    const last = d.length ? d[d.length-1] : 0;
+    const el = document.createElement('div'); el.className='meas';
+    el.innerHTML = '<b>电压表 ' + esc(vm.label) + '</b><br>当前: ' + fmt(last, 'V') + '<br>有效值: ' + fmt(rms(d), 'V') + '<br>峰峰值: ' + fmt(pkpk(d), 'V');
+    div.appendChild(el);
+  }
+  for (const am of results.am) {
+    const d = am.data;
+    const last = d.length ? d[d.length-1] : 0;
+    const el = document.createElement('div'); el.className='meas';
+    el.innerHTML = '<b>电流表 ' + esc(am.label) + '</b><br>当前: ' + fmt(last, 'A') + '<br>有效值: ' + fmt(rms(d), 'A') + '<br>峰峰值: ' + fmt(pkpk(d), 'A');
+    div.appendChild(el);
+  }
+}
+
+// ===================== 示波器绘制 =====================
+function drawScope() {
+  const w = scopeCanvas.clientWidth, h = scopeCanvas.clientHeight;
+  scopeCtx.clearRect(0,0,w,h);
+  if (!results || !results.scope.length || results.times.length < 2) {
+    scopeCtx.fillStyle = '#888'; scopeCtx.font='13px sans-serif'; scopeCtx.textAlign='center';
+    scopeCtx.fillText('示波器：运行仿真后显示波形（请放置示波器并连接 CH1/CH2）', w/2, h/2);
+    return;
+  }
+  const pad = {l:70, r:95, t:20, b:35};
+  const plotW = w - pad.l - pad.r, plotH = h - pad.t - pad.b;
+  if (plotW < 20 || plotH < 20) return;
+  const tMin = results.times[0], tMax = results.times[results.times.length-1];
+  const colors = ['#ffd479','#4da6ff','#50c878','#ff7eb6','#c79bff'];
+
+  // 计算所有通道的公共 Y 轴范围
+  let gMin = Infinity, gMax = -Infinity;
+  for (const ch of results.scope) {
+    if (!ch.data.length) continue;
+    for (const val of ch.data) { if (val < gMin) gMin = val; if (val > gMax) gMax = val; }
+  }
+  if (gMax === gMin) { gMax += 1; gMin -= 1; }
+  const vPad = (gMax - gMin) * 0.05;
+  const axisMin = gMin - vPad;
+  const axisMax = gMax + vPad;
+  const axisRange = axisMax - axisMin;
+
+  scopeCtx.fillStyle = '#101018'; scopeCtx.fillRect(pad.l, pad.t, plotW, plotH);
+  scopeCtx.strokeStyle = '#2a2a3f'; scopeCtx.lineWidth = 1;
+  scopeCtx.beginPath();
+  for (let i=0;i<=10;i++) {
+    const x = pad.l + plotW*i/10; scopeCtx.moveTo(x, pad.t); scopeCtx.lineTo(x, pad.t+plotH);
+  }
+  for (let i=0;i<=4;i++) {
+    const y = pad.t + plotH*i/4; scopeCtx.moveTo(pad.l, y); scopeCtx.lineTo(pad.l+plotW, y);
+  }
+  scopeCtx.stroke();
+
+  // Y 轴数值（左轴）
+  scopeCtx.fillStyle = '#ccc'; scopeCtx.font = '10px sans-serif'; scopeCtx.textAlign = 'right'; scopeCtx.textBaseline = 'middle';
+  for (let i=0;i<=4;i++) {
+    const y = pad.t + plotH*i/4;
+    const val = axisMax - axisRange*i/4;
+    scopeCtx.fillText(fmtAxisVolt(val, axisRange), pad.l - 8, y);
+  }
+  scopeCtx.fillStyle = '#aaa'; scopeCtx.textAlign = 'left'; scopeCtx.textBaseline = 'top';
+  scopeCtx.fillText('Y (V)', pad.l + 4, pad.t + 4);
+
+  // 时间轴
+  scopeCtx.fillStyle = '#aaa'; scopeCtx.font = '10px sans-serif'; scopeCtx.textAlign = 'center'; scopeCtx.textBaseline = 'alphabetic';
+  for (let i=0;i<=10;i++) {
+    const tv = tMin + (tMax-tMin)*i/10;
+    scopeCtx.fillText(tv.toPrecision(3), pad.l + plotW*i/10, pad.t+plotH+15);
+  }
+  scopeCtx.fillText('时间 (s)', pad.l+plotW/2, h-5);
+
+  // 多通道波形（共享 Y 轴）
+  results.scope.forEach((ch, idx) => {
+    const data = ch.data;
+    if (!data.length) return;
+    let mn=Infinity, mx=-Infinity;
+    for (const val of data) { if (val<mn) mn=val; if (val>mx) mx=val; }
+    const color = colors[idx % colors.length];
+    scopeCtx.strokeStyle = color; scopeCtx.lineWidth = 1.8; scopeCtx.beginPath();
+    const stride = Math.max(1, Math.floor(data.length / (plotW*2)));
+    for (let i=0;i<data.length;i+=stride) {
+      const x = pad.l + (results.times[i]-tMin)/(tMax-tMin)*plotW;
+      const y = pad.t + plotH - (data[i]-axisMin)/axisRange*plotH;
+      if (i===0) scopeCtx.moveTo(x,y); else scopeCtx.lineTo(x,y);
+    }
+    scopeCtx.stroke();
+    scopeCtx.fillStyle = color;
+    const ly = pad.t + 12 + idx*16;
+    scopeCtx.fillRect(pad.l+plotW+8, ly-8, 12, 12);
+    scopeCtx.fillStyle = '#ddd'; scopeCtx.textAlign='left'; scopeCtx.textBaseline = 'middle';
+    scopeCtx.fillText(ch.label + ' [' + fmtAxisVolt(mn, mx-mn) + ' ~ ' + fmtAxisVolt(mx, mx-mn) + ']', pad.l+plotW+24, ly+2);
+  });
+}
+
+// ===================== 初始化 =====================
+function buildDefaultCircuit() {
+  // 示例电路：500Hz 正弦函数发生器 -> 1kΩ 电阻 -> 1µF 电容低通滤波到地。
+  // 示波器 CH1 测信号源，CH2 测电容输出电压（可看到衰减与相移）。
+  const fg = addComponent('FG', 120, 100);
+  fg.params.wave = 'sine'; fg.params.A = 2; fg.params.freq = 500; fg.params.phase = 0; fg.params.offset = 0;
+  const r1 = addComponent('R', 260, 100);
+  r1.params.R = 1000;
+  const c1 = addComponent('C', 400, 100);
+  c1.params.C = 1e-6; c1.params.V0 = 0;
+  const gnd1 = addComponent('GND', 160, 220);
+  const gnd2 = addComponent('GND', 440, 220);
+  const scope = addComponent('SCOPE', 520, 180);
+  const vm = addComponent('VM', 360, 180);
+  addWireBetween({c:fg.id,p:0}, {c:r1.id,p:0});
+  addWireBetween({c:r1.id,p:1}, {c:c1.id,p:0});
+  addWireBetween({c:fg.id,p:1}, {c:gnd1.id,p:0});
+  addWireBetween({c:c1.id,p:1}, {c:gnd2.id,p:0});
+  addWireBetween({c:scope.id,p:0}, {c:fg.id,p:0});
+  addWireBetween({c:scope.id,p:1}, {c:c1.id,p:0});
+  addWireBetween({c:vm.id,p:0}, {c:c1.id,p:0});
+  selectedId = null;
+  saveCircuit();
+  buildProps(); draw();
+}
+
+document.getElementById('btnRun').addEventListener('click', startSimulation);
+document.getElementById('btnStop').addEventListener('click', stopSimulation);
+function resetForNewCircuit() {
+  if (simRunning) stopSimulation();
+  components = []; wires = []; selectedId = null; selectedWire = null; wireStart = null;
+  scopePanel.classList.remove('visible');
+  results = null;
+  document.getElementById('measurements').innerHTML = '<div class="hint">运行仿真后显示电压表/电流表读数。</div>';
+}
+document.getElementById('btnClear').addEventListener('click', () => {
+  resetForNewCircuit();
+  saveCircuit();
+  buildProps(); draw();
+});
+document.getElementById('btnScope').addEventListener('click', () => { scopePanel.classList.toggle('visible'); resizeScope(); });
+document.getElementById('btnScopeClose').addEventListener('click', () => scopePanel.classList.remove('visible'));
+
+function buildFullBridgeCircuit() {
+  resetForNewCircuit();
+  const vac = addComponent('VAC', 80, 160);
+  vac.params.Vamp = 10; vac.params.freq = 50; vac.params.phase = 0;
+  const postA = addComponent('POST', 180, 80);
+  const postB = addComponent('POST', 180, 240);
+  const postVP = addComponent('POST', 540, 80);
+  const postVN = addComponent('POST', 540, 240);
+  const d1 = addComponent('D', 360, 80);
+  const d2 = addComponent('D', 360, 240);
+  const d3 = addComponent('D', 300, 160);
+  const d4 = addComponent('D', 300, 200);
+  const rl = addComponent('R', 540, 160);
+  rl.params.R = 1000;
+  const gnd = addComponent('GND', 620, 300);
+  const scope = addComponent('SCOPE', 680, 140);
+  const vm = addComponent('VM', 640, 80);
+  // 交流源 -> A/B 接线柱
+  addWireBetween({c:vac.id,p:0}, {c:postA.id,p:0});
+  addWireBetween({c:vac.id,p:1}, {c:postB.id,p:0});
+  // 整流桥
+  addWireBetween({c:d1.id,p:0}, {c:postA.id,p:0});
+  addWireBetween({c:d1.id,p:1}, {c:postVP.id,p:0});
+  addWireBetween({c:d2.id,p:0}, {c:postB.id,p:0});
+  addWireBetween({c:d2.id,p:1}, {c:postVP.id,p:0});
+  addWireBetween({c:d3.id,p:0}, {c:postVN.id,p:0});
+  addWireBetween({c:d3.id,p:1}, {c:postA.id,p:0});
+  addWireBetween({c:d4.id,p:0}, {c:postVN.id,p:0});
+  addWireBetween({c:d4.id,p:1}, {c:postB.id,p:0});
+  // 负载与测量
+  addWireBetween({c:rl.id,p:0}, {c:postVP.id,p:0});
+  addWireBetween({c:rl.id,p:1}, {c:postVN.id,p:0});
+  addWireBetween({c:gnd.id,p:0}, {c:postVN.id,p:0});
+  addWireBetween({c:scope.id,p:0}, {c:postVP.id,p:0});
+  addWireBetween({c:scope.id,p:1}, {c:postVN.id,p:0});
+  addWireBetween({c:vm.id,p:0}, {c:postVP.id,p:0});
+  document.getElementById('tEnd').value = '0.04';
+  document.getElementById('steps').value = '1000';
+  selectedId = null;
+  saveCircuit();
+  buildProps(); draw();
+}
+
+document.getElementById('btnBridge').addEventListener('click', () => {
+  buildFullBridgeCircuit();
+});
+
+buildPalette();
+if (!restoreCircuit()) {
+  buildDefaultCircuit();
+} else {
+  buildProps(); draw();
+}
+resizeCanvas();
+resizeScope();
+</script>
+</body>
+</html>

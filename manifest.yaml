@@ -129,6 +129,19 @@ html:
     harness: "dsh"
     preset: "anchored-standard"
     date: 2026-08-17
+  - file: circuit-simulator.html
+    title: 模拟电路模拟器
+    prompt:
+      - "忽略当前目录下的其他文件。用单个网页实现一个模拟电路模拟器，自己设计合理的交互，选择合理的技术栈，如果需要使用python，用uv运行，需要实现这些器件：\n1. 无源器件（必须实现）\n电阻（Resistor）：基础元件，支持阻值设定\n电容（Capacitor）：支持容值、初始电压，需瞬态分析\n电感（Inductor）：支持感值、初始电流\n开关（Switch）：手动开关/单刀双掷，支持交互控制\n2. 电源类（必须实现）\n直流电压源（DC Voltage Source）：电池、VCC等\n直流电流源（DC Current Source）\n交流电压源（AC Source）：正弦波，支持幅值、频率、相位\n地（Ground）：电路参考零电位，必须强制存在\n3. 半导体器件（基础版）\n二极管（Diode）：理想/实际模型，需非线性求解\nNPN/PNP 双极型晶体管（BJT）：Ebers-Moll 或 Gummel-Poon 简化模型\nN沟道/P沟道 MOSFET：Level 1（Shichman-Hodges）模型，数字/模拟混合仿真基础\n4. 信号与测量（必须实现）\n电压表/电流表（Probe）：可视化显示节点电压或支路电流\n示波器（Oscilloscope）：多通道波形显示，时域分析核心\n信号发生器（Function Generator）：方波、三角波、锯齿波"
+      - "你现在的例子中，示波器并不会显示画面，是示波器实现的问题，还是这个电路本身就没有波形？如果是电路问题，你换一个例子。"
+      - "连线没有删除功能，另外增加一个接线柱器件，我可以调整排版（自动排版和折线难度比较大，暂时不用开发，我用接线柱代替）"
+      - "现在的示波器没有显示Y轴的数值，需要补充一下"
+      - "增加一个localstorage，可以保存用户画的电路，刷新页面不会丢失。"
+    model: "deepseek-v4-pro-0813"
+    effort: "max"
+    harness: "dsh"
+    preset: "anchored-standard"
+    date: 2026-08-17
 
 svg:
   - file: penrose_stairs.svg
