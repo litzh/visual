@@ -20,7 +20,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # 按 scad 源文件 hash 缓存转换产物；命中时跳过 openscad 安装与转换
+      # 不设 restore-keys：scad 变化时整批重建，避免新旧模型混杂
+      - name: Cache model outputs
+        id: outputs
+        uses: actions/cache@v6
+        with:
+          path: |
+            _site/models
+            _site/assets/thumbs
+          key: model-outputs-${{ hashFiles('scad/*.scad') }}
+
       - name: Install OpenSCAD
+        if: steps.outputs.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y openscad xvfb
@@ -30,15 +42,8 @@ jobs:
         with:
           enable-cache: false
 
-      # openscad 的 CGAL 渲染结果磁盘缓存，scad 文件不变时直接命中
-      - name: Cache OpenSCAD render cache
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/OpenSCAD
-          key: openscad-${{ hashFiles('scad/*.scad') }}
-          restore-keys: openscad-
-
       - name: Convert SCAD -> GLB + thumbnails
+        if: steps.outputs.outputs.cache-hit != 'true'
         run: uv run scad/convert.py
 
       - name: Build site pages
