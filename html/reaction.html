@@ -1,0 +1,2115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>反应扩散生态箱 · Gray–Scott 交互模拟器</title>
+<style>
+:root{
+  --bg:#070a0f; --panel:#0d1219; --panel2:#111823; --line:#1d2a3a;
+  --text:#d7e2ef; --muted:#7f92a8; --accent:#35d0ba; --accent2:#4f9dff;
+  --warn:#ffb454; --bad:#ff5d5d; --ok:#52d273;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Courier New",monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  background:var(--bg);color:var(--text);overflow:hidden;
+  font:13px/1.45 "PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+button,input,select{font:inherit;color:inherit}
+button{
+  background:#14202e;border:1px solid var(--line);border-radius:8px;color:var(--text);
+  padding:6px 10px;cursor:pointer;transition:background .15s,border-color .15s,color .15s;
+}
+button:hover{background:#1b2b3d;border-color:#2c425c}
+button:active{transform:translateY(1px)}
+button.primary{background:#0f5f57;border-color:#16a394}
+button.primary:hover{background:#137a6f}
+button.warn{background:#4a2a1c;border-color:#a3542c}
+button.warn:hover{background:#5d331f}
+button.tiny{padding:3px 8px;font-size:12px;border-radius:6px}
+button.active{background:#0e4f6b;border-color:#1f8fc4;color:#fff}
+button:disabled{opacity:.4;cursor:not-allowed}
+input[type=range]{width:100%;height:18px;accent-color:var(--accent);margin:0}
+input[type=number],select{
+  background:#0a1018;border:1px solid var(--line);border-radius:6px;padding:4px 6px;color:var(--text);min-width:0;
+}
+input[type=number]{width:110px;font-family:var(--mono)}
+select{max-width:100%}
+input[type=checkbox]{accent-color:var(--accent)}
+label{user-select:none}
+#app{display:flex;flex-direction:column;height:100vh}
+header{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:8px 12px;background:linear-gradient(180deg,#0c1320,#090e16);
+  border-bottom:1px solid var(--line);z-index:5;
+}
+header h1{font-size:17px;margin:0;letter-spacing:.04em;white-space:nowrap}
+header h1 span{color:var(--accent)}
+.seedbox{display:flex;align-items:center;gap:6px}
+.seedbox input[type=number]{width:130px}
+#statusPill{
+  padding:4px 12px;border-radius:999px;font-size:12px;border:1px solid var(--line);
+  background:#0d1a12;color:var(--ok);white-space:nowrap;max-width:340px;overflow:hidden;text-overflow:ellipsis;
+}
+#statusPill.warn{background:#241b0c;color:var(--warn);border-color:#6b4d1c}
+#statusPill.bad{background:#2a1010;color:var(--bad);border-color:#6b2222}
+#statusPill.paused{background:#111b29;color:#9fb6cf}
+#main{flex:1;display:flex;min-height:0}
+#canvasWrap{flex:1;position:relative;min-width:0;background:
+  radial-gradient(1200px 600px at 40% 20%,#0a101b 0%,#06090d 70%);}
+#canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair;touch-action:none}
+#hudTop{
+  position:absolute;top:10px;left:12px;pointer-events:none;
+  background:rgba(5,8,12,.72);border:1px solid var(--line);border-radius:10px;
+  padding:6px 10px;font-family:var(--mono);font-size:12px;color:#b9c9dc;backdrop-filter:blur(4px);
+  display:flex;gap:14px;flex-wrap:wrap;max-width:70%;
+}
+#hoverBar{
+  position:absolute;bottom:10px;left:12px;right:12px;pointer-events:none;
+  display:flex;justify-content:space-between;gap:10px;align-items:flex-end;flex-wrap:wrap;
+}
+#hoverInfo{
+  background:rgba(5,8,12,.72);border:1px solid var(--line);border-radius:10px;
+  padding:6px 10px;font-family:var(--mono);font-size:12px;color:#cfe0f2;backdrop-filter:blur(4px);
+  white-space:nowrap;max-width:60%;overflow:hidden;text-overflow:ellipsis;
+}
+#keyHint{
+  background:rgba(5,8,12,.6);color:var(--muted);font-size:11px;padding:4px 8px;border-radius:8px;white-space:nowrap;
+}
+#toast{
+  position:absolute;left:50%;bottom:52px;transform:translateX(-50%);
+  background:rgba(10,16,24,.9);border:1px solid var(--line);border-radius:10px;
+  padding:8px 14px;color:var(--text);font-size:13px;pointer-events:none;opacity:0;transition:opacity .25s;
+  max-width:70%;text-align:center;
+}
+#toast.show{opacity:1}
+#sidebar{
+  width:372px;min-width:340px;overflow-y:auto;overflow-x:hidden;
+  background:linear-gradient(180deg,var(--panel),#0a0f16);border-left:1px solid var(--line);padding:10px;
+}
+.panel{
+  background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:10px;
+}
+.panel h2{margin:0 0 8px;font-size:13px;letter-spacing:.08em;color:var(--accent);display:flex;justify-content:space-between;align-items:center}
+details.panel>summary{cursor:pointer;list-style:none;font-weight:600;color:var(--accent);font-size:13px;letter-spacing:.06em;padding:2px 0}
+details.panel>summary::before{content:"▸ ";color:var(--muted)}
+details.panel[open]>summary::before{content:"▾ "}
+details.panel>summary:hover{color:#6cf0dd}
+details.panel>.inner{margin-top:10px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px}
+.grid1{display:grid;grid-template-columns:1fr;gap:7px}
+.field{display:flex;flex-direction:column;gap:3px;min-width:0}
+.field.horiz{flex-direction:row;align-items:center;justify-content:space-between;gap:8px}
+.field label{color:var(--muted);font-size:12px}
+.field output{font-family:var(--mono);font-size:12px;color:#e8f2ff;background:#0a1018;border:1px solid var(--line);padding:2px 6px;border-radius:6px;min-width:58px;text-align:right}
+.field .rangeLine{display:flex;align-items:center;gap:8px}
+.field .rangeLine output{flex:none}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button{padding:5px 9px}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px}
+.kpi{background:#0a1018;border:1px solid var(--line);border-radius:8px;padding:6px 8px;min-width:0}
+.kpi b{display:block;font-family:var(--mono);font-size:14px;color:#eaf4ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi span{font-size:11px;color:var(--muted)}
+.mono{font-family:var(--mono);font-size:12px}
+.hint{font-size:11px;color:var(--muted);line-height:1.5}
+.hint code{background:#0a1018;border:1px solid var(--line);padding:0 4px;border-radius:4px;font-family:var(--mono)}
+.warnText{color:var(--warn)}
+.badText{color:var(--bad)}
+.okText{color:var(--ok)}
+.principle h3{font-size:13px;margin:12px 0 4px;color:#bfd4ec}
+.principle p,.principle li{font-size:12px;color:#9fb2c8;line-height:1.65}
+.principle ul{padding-left:18px;margin:4px 0}
+.formula{
+  display:block;text-align:center;background:#080d14;border:1px solid var(--line);border-radius:10px;
+  padding:10px;margin:8px 0;font-family:var(--mono);font-size:14px;color:#e9f3ff;overflow-x:auto;white-space:nowrap;
+}
+.formula sub{font-size:10px;color:var(--accent)}
+.formula .op{color:var(--muted)}
+#phaseModal{
+  position:fixed;inset:0;background:rgba(0,0,0,.68);display:none;z-index:50;
+  align-items:center;justify-content:center;padding:18px;
+}
+#phaseModal.open{display:flex}
+#phaseCard{
+  width:min(920px,96vw);max-height:94vh;overflow:auto;background:#0b1018;border:1px solid #244;
+  border-radius:16px;padding:14px;box-shadow:0 18px 60px rgba(0,0,0,.55);
+}
+#phaseCard h2{margin:0 0 10px;display:flex;justify-content:space-between;align-items:center;font-size:16px}
+#phaseCanvas{width:100%;height:auto;display:block;background:#000;border-radius:10px;border:1px solid var(--line)}
+.phasegrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}
+details.panel .phasegrid{grid-template-columns:1fr 1fr}
+#phaseStatus{font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:8px}
+#searchProgress{display:none;margin-top:6px;font-size:12px;color:var(--warn)}
+#searchProgress.show{display:block}
+@media (max-width:900px){
+  #main{flex-direction:column}
+  #sidebar{width:100%;min-width:0;max-height:46vh;border-left:none;border-top:1px solid var(--line)}
+  #canvasWrap{min-height:52vh}
+}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#1d2a3a;border-radius:5px}
+::-webkit-scrollbar-track{background:transparent}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>反应扩散<span>生态箱</span></h1>
+    <span id="statusPill" class="paused">已暂停</span>
+    <div class="row">
+      <button id="btnPause" class="primary" title="空格键也可切换">▶ 继续</button>
+      <button id="btnStep1">单步 1</button>
+      <button id="btnStep10">+10 步</button>
+      <button id="btnStep100">+100 步</button>
+      <button id="btnReset">↺ 重置</button>
+      <button id="btnFullscreen">⛶ 全屏</button>
+    </div>
+    <div class="seedbox">
+      <label class="hint">随机种子</label>
+      <input id="seedInput" type="number" value="20240819" step="1">
+      <button id="btnSeedApply" class="tiny">应用</button>
+      <button id="btnSeedRandom" class="tiny">🎲 随机</button>
+    </div>
+  </header>
+  <div id="main">
+    <section id="canvasWrap">
+      <canvas id="canvas"></canvas>
+      <div id="hudTop">
+        <span id="hudIter">t = 0</span>
+        <span id="hudGrid">网格 256²</span>
+        <span id="hudSteps">步/帧 3</span>
+        <span id="hudFPS">渲染 0 FPS</span>
+      </div>
+      <div id="hoverBar">
+        <div id="hoverInfo">悬停画布查看 U / V / F / k</div>
+        <div id="keyHint">左键投放 · Shift 擦除 · 右键障碍 · 滚轮调笔刷</div>
+      </div>
+      <div id="toast"></div>
+    </section>
+    <aside id="sidebar">
+      <section class="panel">
+        <h2>实时数据 <span id="dataStatus" class="mono okText">待机</span></h2>
+        <div class="kpis">
+          <div class="kpi"><b id="dataIter">0</b><span>迭代步</span></div>
+          <div class="kpi"><b id="dataTime">0.0</b><span>模拟时间 t</span></div>
+          <div class="kpi"><b id="dataFPS">0</b><span>渲染 FPS</span></div>
+          <div class="kpi"><b id="dataCells">0</b><span>实际步/帧</span></div>
+          <div class="kpi"><b id="dataUmin">1.000</b><span>U min / max / mean</span></div>
+          <div class="kpi"><b id="dataVmin">0.000</b><span>V min / max / mean</span></div>
+          <div class="kpi"><b id="dataKF">0</b><span>已存关键帧</span></div>
+          <div class="kpi"><b id="dataMem">0 MB</b><span>模拟数组内存</span></div>
+        </div>
+        <div id="stabilityNote" class="hint" style="margin-top:8px">稳定性提示将在积分时计算。</div>
+      </section>
+
+      <details class="panel" open>
+        <summary>预置场景</summary>
+        <div class="inner">
+          <div class="field">
+            <select id="presetSelect"></select>
+            <div id="presetDesc" class="hint"></div>
+            <button id="btnPresetApply" class="primary" style="margin-top:6px">加载场景（重置迭代）</button>
+          </div>
+        </div>
+      </details>
+
+      <details class="panel" open>
+        <summary>模型参数</summary>
+        <div class="inner grid2">
+          <div class="field"><label>扩散系数 D<sub>U</sub></label>
+            <div class="rangeLine"><input id="duRange" type="range" min="0.02" max="0.4" step="0.005" value="0.16"><output id="duVal">0.160</output></div>
+          </div>
+          <div class="field"><label>扩散系数 D<sub>V</sub></label>
+            <div class="rangeLine"><input id="dvRange" type="range" min="0.01" max="0.3" step="0.005" value="0.08"><output id="dvVal">0.080</output></div>
+          </div>
+          <div class="field"><label>补给率 F（全局）</label>
+            <div class="rangeLine"><input id="fRange" type="range" min="0.001" max="0.1" step="0.0005" value="0.035"><output id="fVal">0.0350</output></div>
+          </div>
+          <div class="field"><label>移除率 k（全局）</label>
+            <div class="rangeLine"><input id="kRange" type="range" min="0.001" max="0.1" step="0.0005" value="0.065"><output id="kVal">0.0650</output></div>
+          </div>
+          <div class="field"><label>时间步长 Δt</label>
+            <div class="rangeLine"><input id="dtRange" type="range" min="0.05" max="2" step="0.05" value="1"><output id="dtVal">1.00</output></div>
+          </div>
+          <div class="field"><label>边界条件</label>
+            <select id="boundarySelect">
+              <option value="periodic">周期边界（左右/上下连通）</option>
+              <option value="reflect">反射边界（零通量 Neumann）</option>
+              <option value="fixed">固定边界（外边界 U=1, V=0）</option>
+            </select>
+          </div>
+          <div class="field"><label>计算网格</label>
+            <select id="gridSelect">
+              <option value="128">128 × 128</option>
+              <option value="256" selected>256 × 256（推荐）</option>
+              <option value="512">512 × 512（高性能需求）</option>
+            </select>
+          </div>
+          <div class="field"><label>积分器</label>
+            <select id="integratorSelect">
+              <option value="euler" selected>显式 Euler（5 点有限差分）</option>
+            </select>
+          </div>
+          <div class="field"><label>每帧模拟步数</label>
+            <div class="rangeLine"><input id="speedRange" type="range" min="1" max="12" step="1" value="3"><output id="speedVal">3</output></div>
+          </div>
+          <div class="field horiz"><label>自动性能保护</label><input id="autoSpeedCheck" type="checkbox" checked></div>
+        </div>
+        <div class="hint" style="margin-top:8px">
+          网格切换时对当前 U、V、F、k 双线性重采样，图案基本保持。模拟步数与渲染帧率解耦：每帧执行 1～N 个积分步，渲染按 <code>requestAnimationFrame</code> 独立刷新。Δx 固定为 1（无量纲格距）。用“局部 F / 局部 k”画过的格点保留局部值，全局 F/k 滑块只更新未标记格点。
+        </div>
+      </details>
+
+      <details class="panel" open>
+        <summary>画笔与投放</summary>
+        <div class="inner">
+          <div class="field"><label>投放物质 / 局部参数</label>
+            <div class="seg" id="brushModeSeg">
+              <button data-mode="V" class="active">投放 V</button>
+              <button data-mode="U">投放 U</button>
+              <button data-mode="erase">擦除</button>
+              <button data-mode="F">局部 F</button>
+              <button data-mode="K">局部 k</button>
+              <button data-mode="restore">恢复 F/k</button>
+            </div>
+          </div>
+          <div class="grid2" style="margin-top:8px">
+            <div class="field"><label id="brushValueLabel">投放浓度 V/U</label>
+              <div class="rangeLine"><input id="brushValueRange" type="range" min="0.01" max="1" step="0.01" value="0.5"><output id="brushValueVal">0.50</output></div>
+            </div>
+            <div class="field"><label>笔刷半径（格）</label>
+              <div class="rangeLine"><input id="brushRadiusRange" type="range" min="1" max="40" step="1" value="6"><output id="brushRadiusVal">6</output></div>
+            </div>
+            <div class="field"><label>软硬度</label>
+              <div class="rangeLine"><input id="brushSoftRange" type="range" min="0" max="1" step="0.05" value="0.35"><output id="brushSoftVal">0.35</output></div>
+            </div>
+            <div class="field"><label>局部 F/k 值</label>
+              <div class="rangeLine"><input id="localValueRange" type="range" min="0.005" max="0.1" step="0.0005" value="0.05"><output id="localValueVal">0.0500</output></div>
+            </div>
+          </div>
+          <div class="field" style="margin-top:8px"><label>绘图工具</label>
+            <div class="seg" id="toolSeg">
+              <button data-tool="free" class="active">自由笔刷</button>
+              <button data-tool="line">直线</button>
+              <button data-tool="circle">圆</button>
+              <button data-tool="rect">矩形</button>
+            </div>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <button id="btnImportImage">导入黑白初始图案…</button>
+            <input id="fileInput" type="file" accept="image/*" hidden>
+            <button id="btnClearObstacles" class="warn tiny">清除障碍</button>
+            <button id="btnClearLocal" class="warn tiny">恢复全部 F/k</button>
+          </div>
+          <div class="hint" style="margin-top:8px">
+            <b>操作：</b>左键拖动投放当前物质；<code>Shift</code>+左键擦除（U→1, V→0）；右键拖动放置不可反应障碍（内部 U=V=0 固定）。局部 F/k 画出“参数区域”，悬停可查看实际值。滚轮快速调整笔刷半径。
+          </div>
+        </div>
+      </details>
+
+      <details class="panel" open>
+        <summary>可视化映射</summary>
+        <div class="inner">
+          <div class="field"><label>显示量</label>
+            <select id="visModeSelect">
+              <option value="V" selected>V 浓度</option>
+              <option value="UV">U / V 双色混合（红=U，蓝=V）</option>
+              <option value="diff">U − V 差值</option>
+              <option value="reaction">反应速率 U·V²</option>
+              <option value="params">参数区域图（红=F，绿=k）</option>
+              <option value="contour">等值线视图（V）</option>
+            </select>
+          </div>
+          <div class="grid2" style="margin-top:8px">
+            <div class="field"><label>颜色映射</label>
+              <select id="colormapSelect">
+                <option value="viridis" selected>Viridis</option>
+                <option value="inferno">Inferno（岩浆）</option>
+                <option value="plasma">Plasma</option>
+                <option value="coolwarm">Coolwarm（冷暖发散）</option>
+                <option value="heat">黑体热力</option>
+                <option value="gray">灰度</option>
+                <option value="ocean">深海青橙</option>
+              </select>
+            </div>
+            <div class="field horiz"><label>自动动态范围</label><input id="rangeAutoCheck" type="checkbox" checked></div>
+          </div>
+          <div class="grid2">
+            <div class="field"><label>显示下限</label>
+              <div class="rangeLine"><input id="rangeMinRange" type="range" min="-1" max="1" step="0.005" value="0"><output id="rangeMinVal">0.000</output></div>
+            </div>
+            <div class="field"><label>显示上限</label>
+              <div class="rangeLine"><input id="rangeMaxRange" type="range" min="-1" max="1" step="0.005" value="1"><output id="rangeMaxVal">1.000</output></div>
+            </div>
+          </div>
+          <div class="field" style="margin-top:6px"><label>等值线间隔（数据单位）</label>
+            <div class="rangeLine"><input id="contourLevelRange" type="range" min="0.005" max="0.2" step="0.005" value="0.02"><output id="contourLevelVal">0.020</output></div>
+          </div>
+          <div id="mapLegend" class="hint" style="margin-top:8px"></div>
+        </div>
+      </details>
+
+      <details class="panel" open>
+        <summary>高级：相图 / 搜索 / 回溯 / 导出</summary>
+        <div class="inner">
+          <div class="row">
+            <button id="btnPhase" class="primary">参数相图（小网格并行）</button>
+            <button id="btnFindInteresting">自动寻找有趣参数</button>
+          </div>
+          <div id="searchProgress">正在扫描参数空间… 0 / 0</div>
+          <div class="grid2" style="margin-top:8px">
+            <div class="field"><label>关键帧间隔（步）</label>
+              <input id="kfInterval" type="number" min="10" max="500" step="10" value="50">
+            </div>
+            <div class="field"><label>关键帧内存预算（MB）</label>
+              <input id="kfBudget" type="number" min="16" max="256" step="16" value="80">
+            </div>
+          </div>
+          <div class="row" style="margin-top:6px">
+            <button id="btnRewind">⟲ 时间回溯</button>
+            <span id="kfInfo" class="hint mono">暂无关键帧</span>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <button id="btnExportPNG">导出 PNG</button>
+            <button id="btnExportJSON">导出参数 JSON</button>
+          </div>
+        </div>
+      </details>
+
+      <details class="panel">
+        <summary>原理说明与模型局限</summary>
+        <div class="inner principle">
+          <h3>Gray–Scott 反应扩散方程</h3>
+          <span class="formula">∂U/∂t = D<sub>U</sub> ∇²U − U·V² + F(1 − U)</span>
+          <span class="formula">∂V/∂t = D<sub>V</sub> ∇²V + U·V² − (F + k)V</span>
+          <p>U 可理解为缓慢补给的基础物质，V 为自催化物质。局部高 V 会消耗 U 并促进更多 V；扩散与补给/移除相互竞争，产生斑点、条纹、迷宫、分裂和行波。本应用中的浓度是无量纲数值（通常介于 0～1），不是 mol/L 等真实化学单位。</p>
+          <h3>数值离散</h3>
+          <p>拉普拉斯算子采用五点有限差分（格距 Δx=1）：</p>
+          <span class="formula">∇²C ≈ C(x+1,y) + C(x−1,y) + C(x,y+1) + C(x,y−1) − 4C(x,y)</span>
+          <p>时间积分使用显式 Euler 格式：每个积分步按当前场计算反应与扩散，再写入下一缓存区并交换。每个新值被截断到 [0,1]，以避免浮点溢出；这是数值保护，不是真实物理。</p>
+          <h3>当前模型局限</h3>
+          <ul>
+            <li><b>一阶显式 Euler：</b>在 Δt 较大时可能不稳定。界面会给出稳定性提示，检测到发散会自动暂停。</li>
+            <li><b>格距固定为 1：</b>扩散系数是相对该格距的无量纲参数；改变网格分辨率时波长按“格数”保持，而不是真实物理尺寸。</li>
+            <li><b>截断与钳制：</b>U、V 被限制在 [0,1]，属于数值近似；颜色映射只改变显示，不修改模拟数组。</li>
+            <li><b>障碍物：</b>内部固定 U=V=0（Dirichlet 型），相邻格点仍与障碍格发生数值扩散，不是零通量固体。</li>
+            <li><b>局部 F/k：</b>以网格尺度突变，实际系统参数梯度通常更平缓；可用软笔刷近似过渡。</li>
+            <li><b>二维与确定性：</b>模型是确定二维 PDE 的有限差分近似；真实化学系统还包含热涨落、三维效应与更复杂动力学。</li>
+          </ul>
+        </div>
+      </details>
+    </aside>
+  </div>
+</div>
+
+<div id="phaseModal">
+  <div id="phaseCard">
+    <h2>参数相图：F × k 小网格并行扫描 <button id="btnPhaseClose">关闭</button></h2>
+    <div class="phasegrid">
+      <div class="field"><label>每边单元数</label><select id="phaseGridSelect"><option value="5">5 × 5</option><option value="6" selected>6 × 6</option><option value="7">7 × 7</option></select></div>
+      <div class="field"><label>F 中心</label><div class="rangeLine"><input id="phaseFCenter" type="range" min="0.01" max="0.08" step="0.001" value="0.035"><output id="phaseFCenterVal">0.035</output></div></div>
+      <div class="field"><label>k 中心</label><div class="rangeLine"><input id="phaseKCenter" type="range" min="0.045" max="0.08" step="0.001" value="0.062"><output id="phaseKCenterVal">0.062</output></div></div>
+      <div class="field"><label>F 跨度</label><div class="rangeLine"><input id="phaseFSpan" type="range" min="0.005" max="0.06" step="0.005" value="0.025"><output id="phaseFSpanVal">0.025</output></div></div>
+      <div class="field"><label>k 跨度</label><div class="rangeLine"><input id="phaseKSpan" type="range" min="0.005" max="0.05" step="0.005" value="0.02"><output id="phaseKSpanVal">0.020</output></div></div>
+      <div class="field"><label>每帧步数</label><div class="rangeLine"><input id="phaseStepsRange" type="range" min="1" max="8" step="1" value="2"><output id="phaseStepsVal">2</output></div></div>
+    </div>
+    <div class="row">
+      <button id="btnPhasePause" class="primary">暂停相图</button>
+      <button id="btnPhaseReset">重置相图</button>
+      <select id="phaseModeSelect">
+        <option value="V">显示 V</option>
+        <option value="UV">显示 U/V</option>
+        <option value="diff">显示 U−V</option>
+        <option value="reaction">显示 UV²</option>
+      </select>
+    </div>
+    <canvas id="phaseCanvas" width="720" height="720"></canvas>
+    <div id="phaseStatus">未运行</div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ============================================================
+   反应扩散生态箱：二维 Gray–Scott 有限差分交互模拟器
+   所有计算都在本地 Canvas 2D + Float32Array 中真实进行。
+   ============================================================ */
+const $ = id => document.getElementById(id);
+const canvas = $('canvas');
+const ctx = canvas.getContext('2d', { alpha: false });
+const simCanvas = document.createElement('canvas');
+const simCtx = simCanvas.getContext('2d', { alpha: false });
+
+const S = {
+  seed: 20240819,
+  preset: 'spots',
+  paused: false,
+  autoPaused: false,
+  autoPauseReason: '',
+  iteration: 0,
+  time: 0,
+  Du: 0.16, Dv: 0.08, F: 0.035, K: 0.065, dt: 1.0,
+  boundary: 'periodic',
+  gridSize: 256,
+  w: 0, h: 0, n: 0,
+  U: null, V: null, U2: null, V2: null,
+  Farr: null, Karr: null, decay: null,
+  mask: null, customF: null, customK: null,
+  nl: null, nr: null, nu: null, nd: null, biasU: null,
+  hasMask: false,
+  integrator: 'euler',
+  speedSteps: 3, autoSpeed: true,
+  autoSteps: 3, frameSkip: 1, frameCounter: 0,
+  lastStepMs: 0, lastFrameSteps: 0,
+  brushMode: 'V', brushRadius: 6, brushValue: 0.5, brushSoft: 0.35,
+  localValue: 0.05, tool: 'free',
+  visMode: 'V', colormap: 'viridis', rangeAuto: true,
+  rangeMin: 0, rangeMax: 1, contourLevel: 0.02,
+  keyframes: [], lastKeyframeIter: -1,
+  stats: null, statsAt: 0, rangeAt: 0, stabilityAt: 0, hover: null,
+  phase: null, searchRunning: false,
+};
+
+const COLOR_STOPS = {
+  viridis: [[0.0,68,1,84],[0.25,59,82,139],[0.5,33,145,140],[0.75,94,201,98],[1.0,253,231,37]],
+  inferno: [[0.0,0,0,4],[0.25,70,12,110],[0.5,191,55,84],[0.75,246,159,31],[1.0,252,255,164]],
+  plasma: [[0.0,13,8,135],[0.25,126,3,168],[0.5,204,71,120],[0.75,248,149,33],[1.0,240,249,33]],
+  coolwarm:[[0.0,59,76,192],[0.35,130,160,220],[0.5,220,220,220],[0.65,220,150,130],[1.0,180,4,38]],
+  heat:    [[0.0,0,0,0],[0.35,120,20,0],[0.65,235,100,10],[0.85,255,210,70],[1.0,255,255,255]],
+  gray:    [[0.0,0,0,0],[1.0,255,255,255]],
+  ocean:   [[0.0,3,22,52],[0.35,10,100,110],[0.6,230,180,80],[0.8,250,120,40],[1.0,255,255,245]],
+};
+const LUT_SIZE = 4096;
+let lut = new Uint32Array(LUT_SIZE);
+
+function hexPack(r, g, b) { return 0xff000000 | ((b & 255) << 16) | ((g & 255) << 8) | (r & 255); }
+function buildLUT(name) {
+  const stops = COLOR_STOPS[name] || COLOR_STOPS.viridis;
+  for (let i = 0; i < LUT_SIZE; i++) {
+    const t = i / (LUT_SIZE - 1);
+    let j = 0;
+    while (j < stops.length - 2 && t > stops[j + 1][0]) j++;
+    const a = stops[j], b = stops[j + 1];
+    const span = Math.max(1e-9, b[0] - a[0]);
+    const f = Math.min(1, Math.max(0, (t - a[0]) / span));
+    const r = Math.round(a[1] + (b[1] - a[1]) * f);
+    const g = Math.round(a[2] + (b[2] - a[2]) * f);
+    const bl = Math.round(a[3] + (b[3] - a[3]) * f);
+    lut[i] = hexPack(r, g, bl);
+  }
+  return lut;
+}
+function cssColorAt(t) {
+  const v = Math.min(1, Math.max(0, t));
+  const c = lut[Math.round(v * (LUT_SIZE - 1))];
+  const r = c & 255, g = (c >>> 8) & 255, b = (c >>> 16) & 255;
+  return `rgb(${r},${g},${b})`;
+}
+buildLUT(S.colormap);
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function allocateArrays(w, h) {
+  const n = w * h;
+  S.w = w; S.h = h; S.n = n; S.gridSize = w;
+  S.U = new Float32Array(n);
+  S.V = new Float32Array(n);
+  S.U2 = new Float32Array(n);
+  S.V2 = new Float32Array(n);
+  S.Farr = new Float32Array(n);
+  S.Karr = new Float32Array(n);
+  S.decay = new Float32Array(n);
+  S.mask = new Uint8Array(n);
+  S.customF = new Uint8Array(n);
+  S.customK = new Uint8Array(n);
+  S.nl = new Int32Array(n); S.nr = new Int32Array(n);
+  S.nu = new Int32Array(n); S.nd = new Int32Array(n);
+  S.biasU = new Float32Array(n);
+  simCanvas.width = w; simCanvas.height = h;
+}
+
+function rebuildTopology() {
+  const w = S.w, h = S.h, n = S.n;
+  if (!n) return;
+  const b = S.boundary;
+  const nl = S.nl, nr = S.nr, nu = S.nu, nd = S.nd, bias = S.biasU;
+  for (let y = 0; y < h; y++) {
+    const row = y * w;
+    for (let x = 0; x < w; x++) {
+      const i = row + x;
+      let l = x > 0 ? i - 1 : i;
+      let r = x < w - 1 ? i + 1 : i;
+      let u = y > 0 ? i - w : i;
+      let d = y < h - 1 ? i + w : i;
+      let outside = 0;
+      if (x === 0) {
+        if (b === 'periodic') l = i + w - 1;
+        else if (b === 'fixed') { l = i; outside++; }
+      }
+      if (x === w - 1) {
+        if (b === 'periodic') r = i - w + 1;
+        else if (b === 'fixed') { r = i; outside++; }
+      }
+      if (y === 0) {
+        if (b === 'periodic') u = i + n - w;
+        else if (b === 'fixed') { u = i; outside++; }
+      }
+      if (y === h - 1) {
+        if (b === 'periodic') d = i - n + w;
+        else if (b === 'fixed') { d = i; outside++; }
+      }
+      nl[i] = l; nr[i] = r; nu[i] = u; nd[i] = d;
+      bias[i] = b === 'fixed' ? outside * 1.0 : 0;
+    }
+  }
+}
+
+function resampleField(src, sw, sh, dw, dh) {
+  const out = new Float32Array(dw * dh);
+  for (let y = 0; y < dh; y++) {
+    const gy = Math.min(sh - 1, Math.max(0, (y + 0.5) * sh / dh - 0.5));
+    const y0 = Math.floor(gy), y1 = Math.min(sh - 1, y0 + 1), ty = gy - y0;
+    for (let x = 0; x < dw; x++) {
+      const gx = Math.min(sw - 1, Math.max(0, (x + 0.5) * sw / dw - 0.5));
+      const x0 = Math.floor(gx), x1 = Math.min(sw - 1, x0 + 1), tx = gx - x0;
+      const i00 = y0 * sw + x0, i10 = y0 * sw + x1, i01 = y1 * sw + x0, i11 = y1 * sw + x1;
+      out[y * dw + x] = (src[i00] * (1 - tx) + src[i10] * tx) * (1 - ty) +
+                        (src[i01] * (1 - tx) + src[i11] * tx) * ty;
+    }
+  }
+  return out;
+}
+function resampleMask(src, sw, sh, dw, dh) {
+  const out = new Uint8Array(dw * dh);
+  for (let y = 0; y < dh; y++) {
+    const gy = Math.min(sh - 1, Math.max(0, (y + 0.5) * sh / dh - 0.5));
+    for (let x = 0; x < dw; x++) {
+      const gx = Math.min(sw - 1, Math.max(0, (x + 0.5) * sw / dw - 0.5));
+      out[y * dw + x] = src[Math.round(gy) * sw + Math.round(gx)] ? 1 : 0;
+    }
+  }
+  return out;
+}
+
+function setGridSize(newSize) {
+  newSize = Number(newSize);
+  if (![128, 256, 512].includes(newSize)) newSize = 256;
+  if (newSize === S.w) return;
+  const old = S.w ? {
+    w: S.w, h: S.h, U: S.U, V: S.V, Farr: S.Farr, Karr: S.Karr,
+    mask: S.mask, customF: S.customF, customK: S.customK,
+  } : null;
+  allocateArrays(newSize, newSize);
+  if (old) {
+    S.U.set(resampleField(old.U, old.w, old.h, newSize, newSize));
+    S.V.set(resampleField(old.V, old.w, old.h, newSize, newSize));
+    S.Farr.set(resampleField(old.Farr, old.w, old.h, newSize, newSize));
+    S.Karr.set(resampleField(old.Karr, old.w, old.h, newSize, newSize));
+    S.mask.set(resampleMask(old.mask, old.w, old.h, newSize, newSize));
+    S.customF.set(resampleMask(old.customF, old.w, old.h, newSize, newSize));
+    S.customK.set(resampleMask(old.customK, old.w, old.h, newSize, newSize));
+    S.hasMask = S.mask.includes(1);
+    toast(`网格已重采样为 ${newSize}²，图案按格数保持`);
+  } else {
+    resetChemicalFields();
+  }
+  rebuildTopology();
+  refreshDecay();
+  zeroObstacles();
+  clearKeyframes();
+  saveKeyframe(true);
+  updateStatsNow();
+  updateRangeNow();
+  syncControlsFromState();
+}
+
+function resetChemicalFields() {
+  const n = S.n;
+  S.U.fill(1); S.V.fill(0);
+  S.Farr.fill(S.F); S.Karr.fill(S.K);
+  S.mask.fill(0); S.customF.fill(0); S.customK.fill(0);
+  S.hasMask = false;
+}
+function refreshDecay() {
+  const F = S.Farr, K = S.Karr, C = S.decay, n = S.n;
+  for (let i = 0; i < n; i++) C[i] = F[i] + K[i];
+}
+function zeroObstacles() {
+  const n = S.n, m = S.mask;
+  let any = false;
+  for (let i = 0; i < n; i++) if (m[i]) { S.U[i] = 0; S.V[i] = 0; any = true; }
+  S.hasMask = any;
+}
+function updateGlobalF(v) {
+  S.F = v;
+  const F = S.Farr, cf = S.customF;
+  for (let i = 0; i < S.n; i++) if (!cf[i]) F[i] = v;
+  refreshDecay();
+}
+function updateGlobalK(v) {
+  S.K = v;
+  const K = S.Karr, ck = S.customK;
+  for (let i = 0; i < S.n; i++) if (!ck[i]) K[i] = v;
+  refreshDecay();
+}
+function restoreAllLocalFK() {
+  S.Farr.fill(S.F); S.Karr.fill(S.K); S.customF.fill(0); S.customK.fill(0);
+  refreshDecay();
+}
+
+function seedBlob(gx, gy, radius, vVal, uVal, soft) {
+  const w = S.w, h = S.h;
+  const ext = Math.ceil(radius * (1 + (soft || 0.25)));
+  const x0 = Math.max(0, Math.floor(gx - ext)), x1 = Math.min(w - 1, Math.ceil(gx + ext));
+  const y0 = Math.max(0, Math.floor(gy - ext)), y1 = Math.min(h - 1, Math.ceil(gy + ext));
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const d = Math.hypot(x - gx, y - gy);
+      let wgt = 0;
+      if (d <= radius) wgt = 1;
+      else if (d < ext) wgt = Math.max(0, 1 - (d - radius) / Math.max(1e-6, ext - radius));
+      if (wgt <= 0) continue;
+      const i = y * w + x;
+      S.U[i] += (uVal - S.U[i]) * wgt;
+      S.V[i] += (vVal - S.V[i]) * wgt;
+    }
+  }
+}
+
+const PRESETS = [
+  { id:'spots', name:'斑点分裂', desc:'多个随机小种子在 F=0.035, k=0.065 下生长、分裂成离散斑点。',
+    Du:0.16, Dv:0.08, F:0.035, K:0.065, dt:1,
+    init(rng){
+      for (let i = 0; i < 18; i++) {
+        const x = S.w * (0.1 + 0.8 * rng());
+        const y = S.h * (0.1 + 0.8 * rng());
+        seedBlob(x, y, 2 + rng() * 4, 0.5, 0.5, 0.35);
+      }
+    } },
+  { id:'coral', name:'珊瑚生长', desc:'中心种子向外长出分枝状“珊瑚”，F=0.0545, k=0.062。',
+    Du:0.16, Dv:0.08, F:0.0545, K:0.062, dt:1,
+    init(rng){
+      const r = Math.max(3, S.w * 0.05);
+      seedBlob(S.w / 2, S.h / 2, r, 0.5, 0.5, 0.4);
+      for (let i = 0; i < 4; i++) seedBlob(S.w / 2 + (rng()-0.5)*r*3, S.h / 2 + (rng()-0.5)*r*3, 2 + rng()*3, 0.4, 0.55, 0.4);
+    } },
+  { id:'fingerprint', name:'指纹条纹', desc:'垂直窄条纹种子在 F=0.05, k=0.0625 下形成平行指纹状条纹。',
+    Du:0.16, Dv:0.08, F:0.05, K:0.0625, dt:1,
+    init(rng){
+      const period = 8, w = S.w, h = S.h;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        if (Math.sin(2 * Math.PI * x / period) > 0) {
+          const i = y * w + x;
+          S.V[i] = Math.max(0, Math.min(1, 0.25 + (rng()-0.5)*0.04));
+          S.U[i] = 0.5;
+        }
+      }
+    } },
+  { id:'worms', name:'蠕虫结构', desc:'随机短线段种子在 F=0.078, k=0.061 下演化为游动的蠕虫。',
+    Du:0.16, Dv:0.08, F:0.078, K:0.061, dt:1,
+    init(rng){
+      for (let i = 0; i < 7; i++) {
+        let x = S.w * (0.15 + 0.7 * rng()), y = S.h * (0.15 + 0.7 * rng());
+        const a = rng() * Math.PI * 2, len = 8 + rng() * 18;
+        const steps = Math.max(4, Math.round(len / 2.5));
+        for (let s = 0; s < steps; s++) {
+          seedBlob(x, y, 2 + rng() * 1.2, 0.5, 0.5, 0.3);
+          x += Math.cos(a) * len / steps; y += Math.sin(a) * len / steps;
+        }
+      }
+    } },
+  { id:'soliton', name:'孤子状移动结构', desc:'两个不对称种子在 F=0.024, k=0.055 附近形成可移动、自持的孤子状波包。',
+    Du:0.16, Dv:0.08, F:0.024, K:0.055, dt:1,
+    init(rng){
+      seedBlob(S.w * 0.42, S.h * 0.5, S.w * 0.045, 0.3, 0.5, 0.5);
+      seedBlob(S.w * 0.58, S.h * 0.5, S.w * 0.03, 0.28, 0.55, 0.5);
+      seedBlob(S.w * 0.5 + (rng()-0.5)*6, S.h * 0.5 + (rng()-0.5)*6, 2.5, 0.2, 0.6, 0.4);
+    } },
+  { id:'regions', name:'两种参数区域竞争', desc:'左区 F=0.024/k=0.055（行波），右区 F=0.035/k=0.065（斑点），在交界面竞争。',
+    Du:0.16, Dv:0.08, F:0.024, K:0.055, dt:1,
+    init(rng){
+      const w = S.w, h = S.h, FL = 0.024, KL = 0.055, FR = 0.035, KR = 0.065;
+      const trans = Math.max(4, Math.round(w * 0.03));
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        const t = Math.min(1, Math.max(0, (x - (w / 2 - trans / 2)) / trans));
+        S.Farr[i] = FL * (1 - t) + FR * t;
+        S.Karr[i] = KL * (1 - t) + KR * t;
+        S.customF[i] = 1; S.customK[i] = 1;
+      }
+      for (let i = 0; i < 8; i++) seedBlob(w*(0.1+0.3*rng()), h*(0.15+0.7*rng()), 2 + rng()*3, 0.5, 0.5, 0.35);
+      const period = 8;
+      for (let y = 0; y < h; y++) for (let x = Math.floor(w*0.55); x < w; x++) {
+        if (Math.sin(2*Math.PI*x/period) > 0) { const i = y*w+x; S.V[i] = 0.25; S.U[i] = 0.5; }
+      }
+      refreshDecay();
+    } },
+  { id:'center', name:'中心种子向外扩散', desc:'单一中心种子在 F=0.04, k=0.063 下形成向外扩散的环/迷宫波。',
+    Du:0.16, Dv:0.08, F:0.04, K:0.063, dt:1,
+    init(rng){
+      seedBlob(S.w/2, S.h/2, Math.max(3, S.w*0.03), 0.25, 0.5, 0.4);
+      seedBlob(S.w/2 + 6, S.h/2 - 5, 2, 0.2, 0.6, 0.4);
+    } },
+];
+const PRESET_MAP = Object.fromEntries(PRESETS.map(p => [p.id, p]));
+
+function loadPreset(id, opts) {
+  const p = PRESET_MAP[id] || PRESETS[0];
+  S.preset = p.id;
+  S.Du = p.Du; S.Dv = p.Dv; S.F = p.F; S.K = p.K; S.dt = p.dt;
+  S.integrator = 'euler';
+  resetChemicalFields();
+  const rng = mulberry32(S.seed);
+  p.init(rng);
+  S.iteration = 0; S.time = 0;
+  S.autoPaused = false; S.autoPauseReason = '';
+  S.paused = false;
+  refreshDecay();
+  zeroObstacles();
+  clearKeyframes();
+  saveKeyframe(true);
+  updateStatsNow();
+  updateRangeNow();
+  syncControlsFromState();
+  updatePauseUI();
+  toast(`已加载场景：${p.name}`);
+  setStatus('run', '运行中');
+}
+
+/* ---------------- 数值积分：显式 Euler + 五点有限差分 ---------------- */
+function integrateOneStep(A, C, B, D, track) {
+  const n = S.n, dt = S.dt, Du = S.Du, Dv = S.Dv;
+  const nl = S.nl, nr = S.nr, nu = S.nu, nd = S.nd, bias = S.biasU;
+  const F = S.Farr, K = S.decay, m = S.mask;
+  let maxRaw = 0, nan = false;
+  if (S.hasMask) {
+    for (let i = 0; i < n; i++) {
+      if (m[i]) { B[i] = 0; D[i] = 0; continue; }
+      const u = A[i], v = C[i];
+      const lapU = A[nl[i]] + A[nr[i]] + A[nu[i]] + A[nd[i]] + bias[i] - 4 * u;
+      const lapV = C[nl[i]] + C[nr[i]] + C[nu[i]] + C[nd[i]] - 4 * v;
+      const uvv = u * v * v;
+      let nu2 = u + dt * (Du * lapU - uvv + F[i] * (1 - u));
+      let nv2 = v + dt * (Dv * lapV + uvv - K[i] * v);
+      let a = nu2 < 0 ? -nu2 : nu2;
+      if (a > maxRaw) maxRaw = a; else if (a !== a) { maxRaw = a; nan = true; }
+      let b = nv2 < 0 ? -nv2 : nv2;
+      if (b > maxRaw) maxRaw = b; else if (b !== b) { maxRaw = b; nan = true; }
+      if (nu2 < 0) nu2 = 0; else if (nu2 > 1) nu2 = 1;
+      if (nv2 < 0) nv2 = 0; else if (nv2 > 1) nv2 = 1;
+      B[i] = nu2; D[i] = nv2;
+    }
+  } else {
+    for (let i = 0; i < n; i++) {
+      const u = A[i], v = C[i];
+      const lapU = A[nl[i]] + A[nr[i]] + A[nu[i]] + A[nd[i]] + bias[i] - 4 * u;
+      const lapV = C[nl[i]] + C[nr[i]] + C[nu[i]] + C[nd[i]] - 4 * v;
+      const uvv = u * v * v;
+      let nu2 = u + dt * (Du * lapU - uvv + F[i] * (1 - u));
+      let nv2 = v + dt * (Dv * lapV + uvv - K[i] * v);
+      let a = nu2 < 0 ? -nu2 : nu2;
+      if (a > maxRaw) maxRaw = a; else if (a !== a) { maxRaw = a; nan = true; }
+      let b = nv2 < 0 ? -nv2 : nv2;
+      if (b > maxRaw) maxRaw = b; else if (b !== b) { maxRaw = b; nan = true; }
+      if (nu2 < 0) nu2 = 0; else if (nu2 > 1) nu2 = 1;
+      if (nv2 < 0) nv2 = 0; else if (nv2 > 1) nv2 = 1;
+      B[i] = nu2; D[i] = nv2;
+    }
+  }
+  if (track) { track.maxRaw = maxRaw; track.nan = nan; }
+  return nan || maxRaw > 2.0;
+}
+
+function runSimSteps(steps) {
+  if (!S.n || steps <= 0) return { steps: 0, diverged: false, reason: '' };
+  let A = S.U, C = S.V, B = S.U2, D = S.V2;
+  let done = 0;
+  for (let s = 0; s < steps; s++) {
+    const track = {};
+    const bad = integrateOneStep(A, C, B, D, track);
+    const tmpU = A; A = B; B = tmpU;
+    const tmpV = C; C = D; D = tmpV;
+    done++;
+    if (bad) {
+      const reason = track.nan ? '检测到 NaN/Inf：浮点溢出，模拟已自动暂停。' :
+        '检测到数值发散（|U| 或 |V| 超过 2.0），模拟已自动暂停。请减小 Δt、调整 F/k 或改用更稳参数。';
+      S.U = A; S.V = C; S.U2 = B; S.V2 = D;
+      for (let i = 0; i < S.n; i++) {
+        if (!Number.isFinite(A[i])) A[i] = 1;
+        if (!Number.isFinite(C[i])) C[i] = 0;
+      }
+      S.iteration += done; S.time += done * S.dt;
+      S.autoPaused = true; S.paused = true; S.autoPauseReason = reason;
+      setStatus('bad', '自动暂停：数值发散');
+      updatePauseUI();
+      return { steps: done, diverged: true, reason };
+    }
+  }
+  S.U = A; S.V = C; S.U2 = B; S.V2 = D;
+  S.iteration += done; S.time += done * S.dt;
+  return { steps: done, diverged: false, reason: '' };
+}
+
+async function manualSteps(total, chunkSize) {
+  chunkSize = chunkSize || 10;
+  if (S.autoPaused) { S.autoPaused = false; S.autoPauseReason = ''; }
+  S.paused = true;
+  updatePauseUI();
+  let remaining = total;
+  while (remaining > 0 && !S.autoPaused) {
+
+    const take = Math.min(chunkSize, remaining);
+    const t0 = performance.now();
+    const res = runSimSteps(take);
+    S.lastStepMs = (performance.now() - t0) / take;
+    remaining -= res.steps;
+    updateStatsNow();
+    updateRangeIfAuto(true);
+    saveKeyframeIfDue();
+    renderScene();
+    if (res.diverged) { updateDataPanel(); updateStabilityNote(); return; }
+    if (remaining > 0) await new Promise(r => setTimeout(r, 0));
+  }
+  updateDataPanel();
+  updateStabilityNote();
+  renderScene();
+}
+
+/* ---------------- 关键帧（时间回溯） ---------------- */
+function computeKeyframeCapacity() {
+  const bytes = S.n * (4 * 4 + 3);
+  const budget = Math.max(16, Math.min(256, Number($('kfBudget').value) || 80)) * 1024 * 1024;
+  return Math.max(1, Math.min(80, Math.floor(budget / Math.max(1, bytes))));
+}
+function saveKeyframe(force) {
+  if (!S.n) return;
+  const cap = computeKeyframeCapacity();
+  const interval = Math.max(10, Math.min(500, Number($('kfInterval').value) || 50));
+  if (!force && (S.iteration - S.lastKeyframeIter < interval)) return;
+  const kf = {
+    iter: S.iteration, time: S.time,
+    U: S.U.slice(), V: S.V.slice(), F: S.Farr.slice(), K: S.Karr.slice(),
+    mask: S.mask.slice(), customF: S.customF.slice(), customK: S.customK.slice(),
+    Fg: S.F, Kg: S.K,
+  };
+  S.keyframes.push(kf);
+  if (S.keyframes.length > cap) S.keyframes.shift();
+  S.lastKeyframeIter = S.iteration;
+  updateKeyframeUI();
+}
+function saveKeyframeIfDue() { saveKeyframe(false); }
+function clearKeyframes() { S.keyframes = []; S.lastKeyframeIter = -1; updateKeyframeUI(); }
+function rewindOneKeyframe() {
+  if (!S.keyframes.length) { toast('暂无关键帧可回溯'); return; }
+  let idx = -1;
+  for (let i = S.keyframes.length - 1; i >= 0; i--) {
+    if (S.keyframes[i].iter < S.iteration) { idx = i; break; }
+  }
+  if (idx < 0) {
+    idx = S.keyframes.length - 1;
+    if (S.keyframes[idx].iter >= S.iteration) { toast('已在最早保存的关键帧'); return; }
+  }
+  const kf = S.keyframes[idx];
+  S.U.set(kf.U); S.V.set(kf.V); S.Farr.set(kf.F); S.Karr.set(kf.K);
+  S.mask.set(kf.mask); S.customF.set(kf.customF); S.customK.set(kf.customK);
+  if (kf.Fg !== undefined) S.F = kf.Fg;
+  if (kf.Kg !== undefined) S.K = kf.Kg;
+  refreshDecay();
+  S.keyframes.length = idx + 1;
+  S.iteration = kf.iter; S.time = kf.time;
+  S.lastKeyframeIter = kf.iter;
+  S.autoPaused = false; S.autoPauseReason = '';
+  S.paused = true;
+  zeroObstacles();
+  updateStatsNow();
+  updateRangeNow();
+  syncControlsFromState();
+  setStatus('paused', `已回溯到第 ${kf.iter} 步（后续关键帧已丢弃）`);
+
+  renderScene();
+}
+function updateKeyframeUI() {
+  const cap = computeKeyframeCapacity();
+  $('dataKF').textContent = S.keyframes.length ? `${S.keyframes.length} / ${cap}` : `0 / ${cap}`;
+  $('kfInfo').textContent = S.keyframes.length ?
+    `已存 ${S.keyframes.length}/${cap} 帧，最近 #${S.lastKeyframeIter}，当前 #${S.iteration}` :
+    '暂无关键帧（运行后按间隔自动保存）';
+}
+
+/* ---------------- 统计与自动范围 ---------------- */
+function computeStats() {
+  const n = S.n, U = S.U, V = S.V;
+  let uMin = Infinity, uMax = -Infinity, uSum = 0, vMin = Infinity, vMax = -Infinity, vSum = 0;
+  for (let i = 0; i < n; i++) {
+    const u = U[i], v = V[i];
+    if (u < uMin) uMin = u; if (u > uMax) uMax = u; uSum += u;
+    if (v < vMin) vMin = v; if (v > vMax) vMax = v; vSum += v;
+  }
+  return { uMin, uMax, uMean: uSum / n, vMin, vMax, vMean: vSum / n };
+}
+function updateStatsNow() {
+  S.stats = computeStats();
+  S.statsAt = performance.now();
+  updateDataPanel();
+}
+function updateDataPanel() {
+  const st = S.stats || computeStats();
+  $('dataIter').textContent = S.iteration.toLocaleString('zh-CN');
+  $('dataTime').textContent = S.time.toFixed(2);
+  $('dataUmin').textContent = `${st.uMin.toFixed(3)} / ${st.uMax.toFixed(3)} / ${st.uMean.toFixed(3)}`;
+  $('dataVmin').textContent = `${st.vMin.toFixed(3)} / ${st.vMax.toFixed(3)} / ${st.vMean.toFixed(3)}`;
+  const mem = S.n * (4 * 8 + 4 * 4 + 3) / (1024 * 1024);
+  $('dataMem').textContent = mem.toFixed(1) + ' MB';
+  const lfs = S.lastFrameSteps || S.autoSteps;
+  $('dataCells').textContent = S.lastStepMs > 0 ? `实际 ${lfs} 步/帧 · ${S.lastStepMs.toFixed(1)} ms·步⁻¹` : '—';
+
+  $('hudIter').textContent = `t = ${S.time.toFixed(1)}（#${S.iteration.toLocaleString('zh-CN')}）`;
+  $('hudGrid').textContent = `网格 ${S.w}²`;
+  $('hudSteps').textContent = `步/帧 ${S.autoSteps}` + (S.frameSkip > 1 ? `（每 ${S.frameSkip} 帧积分）` : '');
+}
+function fieldDomain(mode) {
+  if (mode === 'diff') return [-1, 1];
+  if (mode === 'reaction') return [0, 0.25];
+  if (mode === 'UV' || mode === 'params') return null;
+  return [0, 1];
+}
+function computeAutoRange(mode) {
+  const n = S.n, U = S.U, V = S.V, mask = S.mask;
+  const dom = fieldDomain(mode) || [0, 1];
+  if (mode === 'UV' || mode === 'params') return [0, 1];
+  const bins = 256, hist = new Float64Array(bins);
+  let count = 0;
+  for (let i = 0; i < n; i++) {
+    if (mask[i]) continue;
+    let val;
+    if (mode === 'V' || mode === 'contour') val = V[i];
+    else if (mode === 'diff') val = U[i] - V[i];
+    else val = U[i] * V[i] * V[i];
+    let t = (val - dom[0]) / Math.max(1e-12, dom[1] - dom[0]);
+    if (t < 0) t = 0; else if (t > 1) t = 1;
+    hist[Math.min(bins - 1, Math.floor(t * bins))]++;
+    count++;
+  }
+  if (count < 8) return [dom[0], dom[1]];
+  const c1 = count * 0.01, c99 = count * 0.99;
+  let lo = dom[1], hi = dom[0], acc = 0;
+  for (let i = 0; i < bins; i++) {
+    acc += hist[i];
+    if (acc >= c1 && lo === dom[1]) lo = dom[0] + (i + 0.5) * (dom[1] - dom[0]) / bins;
+    if (acc >= c99) { hi = dom[0] + (i + 0.5) * (dom[1] - dom[0]) / bins; break; }
+  }
+  if (hi - lo < 0.02) {
+    const mid = (hi + lo) / 2;
+    lo = Math.max(dom[0], mid - 0.02);
+    hi = Math.min(dom[1], mid + 0.02);
+    if (hi <= lo) { lo = dom[0]; hi = dom[1]; }
+  }
+  return [lo, hi];
+}
+function updateRangeNow() {
+  if (!S.n) return;
+  if (S.rangeAuto && S.visMode !== 'UV' && S.visMode !== 'params') {
+    const r = computeAutoRange(S.visMode);
+    S.rangeMin = r[0]; S.rangeMax = r[1];
+  }
+  syncRangeControls();
+  updateMapLegend();
+}
+function updateRangeIfAuto(force) {
+  if (!S.rangeAuto || S.visMode === 'UV' || S.visMode === 'params') return;
+  if (!force && performance.now() - S.rangeAt < 400) return;
+  const r = computeAutoRange(S.visMode);
+  S.rangeMin = r[0]; S.rangeMax = r[1];
+  S.rangeAt = performance.now();
+  syncRangeControls();
+  updateMapLegend();
+}
+function syncRangeControls() {
+  const dom = fieldDomain(S.visMode) || [0, 1];
+  S.rangeMin = Math.min(dom[1], Math.max(dom[0], S.rangeMin));
+  S.rangeMax = Math.min(dom[1], Math.max(dom[0], S.rangeMax));
+  if (S.rangeMax <= S.rangeMin + 1e-4) {
+    S.rangeMin = dom[0]; S.rangeMax = dom[1];
+  }
+  $('rangeMinRange').min = dom[0]; $('rangeMinRange').max = dom[1];
+  $('rangeMaxRange').min = dom[0]; $('rangeMaxRange').max = dom[1];
+  $('rangeMinRange').value = S.rangeMin;
+  $('rangeMaxRange').value = S.rangeMax;
+  $('rangeMinVal').textContent = S.rangeMin.toFixed(3);
+  $('rangeMaxVal').textContent = S.rangeMax.toFixed(3);
+  const noRange = S.visMode === 'UV' || S.visMode === 'params';
+  $('rangeMinRange').disabled = S.rangeAuto || noRange;
+  $('rangeMaxRange').disabled = S.rangeAuto || noRange;
+}
+
+function updateStabilityNote() {
+  const el = $('stabilityNote');
+  const diffCFL = S.dt / (1 / (4 * Math.max(S.Du, S.Dv)));
+  const parts = [];
+  if (diffCFL > 1) parts.push(`扩散 CFL=${diffCFL.toFixed(2)}>1：Δt 过大，扩散项显式格式会不稳定`);
+  else parts.push(`扩散 CFL=${diffCFL.toFixed(3)}≤1：扩散项稳定`);
+  if (S.dt > 1.2) parts.push('经验上 Gray–Scott 显式 Euler 建议 Δt≤1.0，当前偏大');
+  else if (S.dt > 1.0) parts.push('Δt>1.0，处于经验稳定边缘');
+  else parts.push('反应项经验稳定区');
+  const div = S.autoPaused ? `<div class="badText">⚠ ${S.autoPauseReason}</div>` : '';
+  el.innerHTML = `显式 Euler：${parts.join('；')}。发生发散会自动暂停并钳制。${div}`;
+}
+
+/* ---------------- 可视化渲染（只做显示映射，绝不修改模拟数组） ---------------- */
+let imgData = null, imgU32 = null;
+let view = { x: 10, y: 10, w: 100, h: 100 };
+let viewport = { cssW: 0, cssH: 0, dpr: 1 };
+let suppressOverlay = false;
+
+function ensureImageBuffer() {
+  const n = S.n;
+  if (!imgData || imgData.width !== S.w || imgData.height !== S.h) {
+    const arr = new Uint8ClampedArray(n * 4);
+    imgData = new ImageData(arr, S.w, S.h);
+    imgU32 = new Uint32Array(arr.buffer);
+  }
+}
+function clamp01(x) { return x < 0 ? 0 : (x > 1 ? 1 : x); }
+
+function renderSimImage() {
+  ensureImageBuffer();
+  const w = S.w, h = S.h, n = S.n;
+  const U = S.U, V = S.V, F = S.Farr, K = S.Karr, mask = S.mask;
+  const pix = imgU32;
+  const mode = S.visMode;
+  const BLACK = hexPack(46, 17, 21);
+  if (mode === 'V' || mode === 'diff' || mode === 'reaction') {
+    const lo = S.rangeMin, hi = S.rangeMax;
+    const scale = LUT_SIZE / Math.max(1e-12, hi - lo);
+    const off = lo;
+    if (S.hasMask) {
+      for (let i = 0; i < n; i++) {
+        if (mask[i]) { pix[i] = BLACK; continue; }
+        let val = mode === 'V' ? V[i] : (mode === 'diff' ? U[i] - V[i] : U[i] * V[i] * V[i]);
+        let idx = (val - off) * scale;
+        if (idx < 0) idx = 0; else if (idx > LUT_SIZE - 1) idx = LUT_SIZE - 1;
+        pix[i] = lut[idx | 0];
+      }
+    } else {
+      for (let i = 0; i < n; i++) {
+        let val = mode === 'V' ? V[i] : (mode === 'diff' ? U[i] - V[i] : U[i] * V[i] * V[i]);
+        let idx = (val - off) * scale;
+        if (idx < 0) idx = 0; else if (idx > LUT_SIZE - 1) idx = LUT_SIZE - 1;
+        pix[i] = lut[idx | 0];
+      }
+    }
+  } else if (mode === 'contour') {
+    const lo = S.rangeMin, hi = S.rangeMax;
+    const span = Math.max(1e-12, hi - lo);
+    const lev = Math.max(1e-9, S.contourLevel);
+    const lineCol = 0xffe8c040;
+    if (S.hasMask) {
+      for (let i = 0; i < n; i++) {
+        if (mask[i]) { pix[i] = BLACK; continue; }
+        const v = V[i];
+        const t = clamp01((v - lo) / span);
+        const base = Math.round(14 + 95 * t);
+        const ph = v / lev - Math.floor(v / lev);
+        pix[i] = (ph < 0.06 || ph > 0.94) ? lineCol : hexPack(base, Math.round(base * 1.08), Math.round(base * 0.92));
+      }
+    } else {
+      for (let i = 0; i < n; i++) {
+        const v = V[i];
+        const t = clamp01((v - lo) / span);
+        const base = Math.round(14 + 95 * t);
+        const ph = v / lev - Math.floor(v / lev);
+        pix[i] = (ph < 0.06 || ph > 0.94) ? lineCol : hexPack(base, Math.round(base * 1.08), Math.round(base * 0.92));
+      }
+    }
+  } else if (mode === 'UV') {
+    if (S.hasMask) {
+      for (let i = 0; i < n; i++) {
+        if (mask[i]) { pix[i] = BLACK; continue; }
+        const r = Math.round(clamp01(U[i]) * 255);
+        const b = Math.round(clamp01(V[i]) * 255);
+        const g = Math.round(22 + 45 * clamp01((U[i] + V[i]) * 0.5));
+        pix[i] = hexPack(r, g, b);
+      }
+    } else {
+      for (let i = 0; i < n; i++) {
+        const r = Math.round(clamp01(U[i]) * 255);
+        const b = Math.round(clamp01(V[i]) * 255);
+        const g = Math.round(22 + 45 * clamp01((U[i] + V[i]) * 0.5));
+        pix[i] = hexPack(r, g, b);
+      }
+    }
+  } else if (mode === 'params') {
+    if (S.hasMask) {
+      for (let i = 0; i < n; i++) {
+        if (mask[i]) { pix[i] = BLACK; continue; }
+        const r = Math.round(clamp01(F[i] / 0.08) * 255);
+        const g = Math.round(clamp01(K[i] / 0.08) * 255);
+        pix[i] = hexPack(r, g, 38);
+      }
+    } else {
+      for (let i = 0; i < n; i++) {
+        const r = Math.round(clamp01(F[i] / 0.08) * 255);
+        const g = Math.round(clamp01(K[i] / 0.08) * 255);
+        pix[i] = hexPack(r, g, 38);
+      }
+    }
+  }
+  simCtx.putImageData(imgData, 0, 0);
+}
+
+function resizeCanvas() {
+  const wrap = $('canvasWrap');
+  const rect = wrap.getBoundingClientRect();
+  const dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
+  const cssW = Math.max(200, rect.width), cssH = Math.max(160, rect.height);
+  viewport.cssW = cssW; viewport.cssH = cssH; viewport.dpr = dpr;
+  const pw = Math.round(cssW * dpr), ph = Math.round(cssH * dpr);
+  if (canvas.width !== pw || canvas.height !== ph) {
+    canvas.width = pw; canvas.height = ph;
+    canvas.style.width = cssW + 'px'; canvas.style.height = cssH + 'px';
+  }
+  const legendW = cssW < 480 ? 56 : 86;
+  const pad = 10;
+  view = { x: pad, y: pad, w: Math.max(80, cssW - legendW - pad * 2), h: Math.max(80, cssH - pad * 2) };
+}
+
+function drawLegend() {
+  const dpr = viewport.dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const x = view.x + view.w + 8;
+  const y = view.y;
+  const w = Math.max(34, viewport.cssW - view.x - view.w - 18);
+  const h = Math.max(60, view.h);
+  ctx.clearRect(x - 4, y - 4, w + 8, h + 8);
+  ctx.font = '11px ' + "'PingFang SC','Microsoft YaHei',sans-serif";
+  ctx.textAlign = 'left';
+  const title = {
+    V: 'V 浓度（0–1）', diff: 'U−V', reaction: 'U·V²（≤0.25）', contour: 'V 等值线', UV: 'U/V 通道', params: 'F/k 区域'
+  }[S.visMode] || '';
+  if (S.visMode === 'UV') {
+    const bars = [{ c: '#ff3b30', t: 'U→红' }, { c: '#2f7bff', t: 'V→蓝' }];
+    bars.forEach((b, bi) => {
+      const yy = y + bi * 60;
+      ctx.fillStyle = b.c; ctx.fillRect(x, yy, w, 12);
+      ctx.fillStyle = '#9fb2c8'; ctx.fillText(b.t, x, yy + 26);
+    });
+    ctx.fillStyle = '#7f92a8'; ctx.fillText('显示值=实际模拟值', x, y + 134);
+    return;
+  }
+  if (S.visMode === 'params') {
+    ctx.fillStyle = '#ff2d3f'; ctx.fillRect(x, y, w, 12);
+    ctx.fillStyle = '#43d86a'; ctx.fillRect(x, y + 26, w, 12);
+    ctx.fillStyle = '#9fb2c8'; ctx.fillText('F→红', x, y + 52); ctx.fillText('k→绿', x, y + 70);
+    ctx.fillStyle = '#7f92a8'; ctx.fillText('暗红=障碍', x, y + 88);
+    return;
+  }
+
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = '#2b3d52'; ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  ctx.fillStyle = '#eaf4ff';
+  ctx.fillText(title, x, y - 5);
+  ctx.fillText(S.rangeMax.toFixed(3), x, y + 10);
+  ctx.fillText(S.rangeMin.toFixed(3), x, y + h - 4);
+  if (S.visMode === 'contour') {
+    ctx.fillStyle = '#e8c040'; ctx.fillText(`亮线间隔 ${S.contourLevel.toFixed(3)}`, x, y + h / 2);
+  }
+  if (S.rangeAuto && S.visMode !== 'contour') ctx.fillStyle = '#7f92a8'; else ctx.fillStyle = '#ffb454';
+  ctx.fillText(S.rangeAuto ? '自动范围' : '手动范围', x, y + h / 2);
+}
+
+function gridToView(gx, gy) {
+  return { x: view.x + (gx + 0.5) / S.w * view.w, y: view.y + (gy + 0.5) / S.h * view.h };
+}
+function drawOverlay() {
+  if (!S.hover) return;
+  const dpr = viewport.dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const hov = S.hover;
+  if (hov.inside) {
+    const p = gridToView(hov.gx, hov.gy);
+    ctx.strokeStyle = 'rgba(220,240,255,.28)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(view.x, p.y); ctx.lineTo(view.x + view.w, p.y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(p.x, view.y); ctx.lineTo(p.x, view.y + view.h); ctx.stroke();
+    const radiusPx = Math.max(2, S.brushRadius / S.w * view.w);
+    ctx.strokeStyle = modeColor();
+    ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.arc(p.x, p.y, radiusPx, 0, Math.PI * 2); ctx.stroke();
+  }
+  if (S.previewShape) {
+    ctx.strokeStyle = modeColor();
+    ctx.lineWidth = 1.6;
+    ctx.setLineDash([5, 4]);
+    const a = S.previewShape.a, b = S.previewShape.b;
+    const pa = gridToView(a.x, a.y), pb = gridToView(b.x, b.y);
+    ctx.beginPath();
+    if (S.tool === 'line') { ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); }
+    else if (S.tool === 'circle') { const r = Math.hypot(pb.x - pa.x, pb.y - pa.y); ctx.arc(pa.x, pa.y, r, 0, Math.PI * 2); }
+    else if (S.tool === 'rect') ctx.rect(Math.min(pa.x, pb.x), Math.min(pa.y, pb.y), Math.abs(pb.x - pa.x), Math.abs(pb.y - pa.y));
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+function modeColor() {
+  if (S.brushMode === 'V') return '#42d8ff';
+  if (S.brushMode === 'U') return '#ff6b5e';
+  if (S.brushMode === 'F') return '#ffc857';
+  if (S.brushMode === 'K') return '#7dff9b';
+  if (S.brushMode === 'restore') return '#b8c7da';
+  return '#e8ecf2';
+}
+
+function renderScene() {
+  if (!S.n) return;
+  resizeCanvas();
+  const dpr = viewport.dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#05070b';
+  ctx.fillRect(0, 0, viewport.cssW, viewport.cssH);
+  renderSimImage();
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(simCanvas, view.x, view.y, view.w, view.h);
+  ctx.strokeStyle = '#1f3042';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(view.x + 0.5, view.y + 0.5, view.w - 1, view.h - 1);
+  drawLegend();
+  if (!suppressOverlay) drawOverlay();
+}
+
+function updateMapLegend() {
+  const el = $('mapLegend');
+  if (S.visMode === 'V') el.innerHTML = `显示 <b>V 浓度</b>（无量纲 0–1）。动态范围 ${S.rangeAuto ? '自动（1%–99% 分位）' : '手动'}，当前 [${S.rangeMin.toFixed(3)}, ${S.rangeMax.toFixed(3)}]。颜色映射只改变显示，不修改模拟值。`;
+  else if (S.visMode === 'UV') el.innerHTML = '显示 <b>U / V 双色混合</b>：红通道=U，蓝通道=V，绿通道=两者亮度提示。数值未被修改。';
+  else if (S.visMode === 'diff') el.innerHTML = `显示 <b>U − V</b>。范围 ${S.rangeAuto ? '自动' : '手动'} [${S.rangeMin.toFixed(3)}, ${S.rangeMax.toFixed(3)}]。`;
+  else if (S.visMode === 'reaction') el.innerHTML = `显示 <b>反应速率 U·V²</b>（最大理论值 0.25）。范围 ${S.rangeAuto ? '自动' : '手动'} [${S.rangeMin.toFixed(3)}, ${S.rangeMax.toFixed(3)}]。`;
+  else if (S.visMode === 'params') el.innerHTML = '显示 <b>参数区域图</b>：红=F，绿=k，蓝固定；暗红色为不可反应障碍。';
+  else el.innerHTML = `显示 <b>V 等值线</b>：暗底为 V 幅度，亮线是 V=n·Δ 的等值线（Δ=${S.contourLevel.toFixed(3)}）。`;
+}
+
+/* ---------------- 鼠标 / 笔刷 / 绘图交互 ---------------- */
+S.previewShape = null;
+S.drawing = false;
+S.shapeStart = null;
+S.lastPaint = null;
+S.shiftActive = false;
+S.activeStrokeMode = 'V';
+
+function effectiveMode() {
+  if (S.activeStrokeMode === 'obstacle') return 'obstacle';
+  if (S.shiftActive) {
+    if (S.brushMode === 'F' || S.brushMode === 'K') return 'restore';
+    return 'erase';
+  }
+  return S.brushMode;
+}
+
+function paintDot(gx, gy) {
+  const w = S.w, h = S.h;
+  const r = S.brushRadius, soft = S.brushSoft;
+  const ext = Math.ceil(r * (1 + soft));
+  const x0 = Math.max(0, Math.floor(gx - ext)), x1 = Math.min(w - 1, Math.ceil(gx + ext));
+  const y0 = Math.max(0, Math.floor(gy - ext)), y1 = Math.min(h - 1, Math.ceil(gy + ext));
+  const mode = effectiveMode();
+  const target = mode === 'F' || mode === 'K' ? S.localValue : S.brushValue;
+  const fade = Math.max(1e-6, ext - r);
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const d = Math.hypot(x - gx, y - gy);
+      let wgt = 0;
+      if (d <= r) wgt = 1;
+      else if (d < ext) {
+        const t = 1 - (d - r) / fade;
+        wgt = t * t * (3 - 2 * t); // 平滑软边
+      }
+      if (wgt <= 0.003) continue;
+      const i = y * w + x;
+      if (mode === 'V') S.V[i] += (target - S.V[i]) * wgt;
+      else if (mode === 'U') S.U[i] += (target - S.U[i]) * wgt;
+      else if (mode === 'erase') { S.U[i] = 1; S.V[i] = 0; S.mask[i] = 0; }
+      else if (mode === 'F') {
+        S.Farr[i] += (target - S.Farr[i]) * wgt;
+        S.decay[i] = S.Farr[i] + S.Karr[i];
+        if (wgt > 0.15) S.customF[i] = 1;
+      } else if (mode === 'K') {
+        S.Karr[i] += (target - S.Karr[i]) * wgt;
+        S.decay[i] = S.Farr[i] + S.Karr[i];
+        if (wgt > 0.15) S.customK[i] = 1;
+      } else if (mode === 'restore') {
+        if (wgt > 0.15) { S.customF[i] = 0; S.customK[i] = 0; }
+        S.Farr[i] += (S.F - S.Farr[i]) * wgt;
+        S.Karr[i] += (S.K - S.Karr[i]) * wgt;
+        S.decay[i] = S.Farr[i] + S.Karr[i];
+      } else if (mode === 'obstacle') {
+        if (wgt > 0.4) { S.mask[i] = 1; S.hasMask = true; S.U[i] = 0; S.V[i] = 0; }
+      }
+    }
+  }
+}
+
+function paintSegment(x0, y0, x1, y1) {
+  const dist = Math.hypot(x1 - x0, y1 - y0);
+  const step = Math.max(0.35, Math.min(S.brushRadius * 0.35, 3));
+  const count = Math.max(1, Math.ceil(dist / step));
+  for (let s = 0; s <= count; s++) {
+    const t = s / count;
+    paintDot(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
+  }
+}
+function paintShape(a, b) {
+  if (S.tool === 'line') { paintSegment(a.x, a.y, b.x, b.y); return; }
+  if (S.tool === 'circle') {
+    const rad = Math.hypot(b.x - a.x, b.y - a.y);
+    const step = Math.max(1, Math.ceil(S.brushRadius * 0.45));
+    const y0 = Math.max(0, Math.floor(a.y - rad)), y1 = Math.min(S.h - 1, Math.ceil(a.y + rad));
+    const x0 = Math.max(0, Math.floor(a.x - rad)), x1 = Math.min(S.w - 1, Math.ceil(a.x + rad));
+    for (let y = y0; y <= y1; y += step) {
+      for (let x = x0; x <= x1; x += step) {
+        if (Math.hypot(x - a.x, y - a.y) <= rad) paintDot(x, y);
+      }
+    }
+    return;
+  }
+  if (S.tool === 'rect') {
+    const x0 = Math.max(0, Math.floor(Math.min(a.x, b.x))), x1 = Math.min(S.w - 1, Math.ceil(Math.max(a.x, b.x)));
+    const y0 = Math.max(0, Math.floor(Math.min(a.y, b.y))), y1 = Math.min(S.h - 1, Math.ceil(Math.max(a.y, b.y)));
+    const step = Math.max(1, Math.ceil(S.brushRadius * 0.45));
+    for (let y = y0; y <= y1; y += step) for (let x = x0; x <= x1; x += step) paintDot(x, y);
+  }
+}
+
+function eventToGrid(ev) {
+  const rect = canvas.getBoundingClientRect();
+  const px = ev.clientX - rect.left, py = ev.clientY - rect.top;
+  const inside = px >= view.x && px <= view.x + view.w && py >= view.y && py <= view.y + view.h;
+  const gx = Math.max(0, Math.min(S.w - 1, Math.floor((px - view.x) / view.w * S.w)));
+  const gy = Math.max(0, Math.min(S.h - 1, Math.floor((py - view.y) / view.h * S.h)));
+  return { px, py, gx, gy, inside };
+}
+function updateHover(ev) {
+  if (!S.n) return;
+  const g = eventToGrid(ev);
+  S.hover = g;
+  if (g.inside) {
+    const i = g.gy * S.w + g.gx;
+    if (S.mask[i]) $('hoverInfo').textContent = `(${g.gx}, ${g.gy}) 障碍物（U=0, V=0，不可反应）`;
+    else $('hoverInfo').textContent = `(${g.gx}, ${g.gy})  U=${S.U[i].toFixed(3)}  V=${S.V[i].toFixed(3)}  F=${S.Farr[i].toFixed(4)}  k=${S.Karr[i].toFixed(4)}${S.customF[i] || S.customK[i] ? '（局部参数）' : ''}`;
+  } else {
+    $('hoverInfo').textContent = '悬停画布查看 U / V / F / k';
+  }
+}
+
+canvas.addEventListener('pointerdown', ev => {
+  if (!S.n) return;
+  ev.preventDefault();
+  canvas.setPointerCapture(ev.pointerId);
+  const g = eventToGrid(ev);
+  if (!g.inside) return;
+  if (ev.button === 2) S.activeStrokeMode = 'obstacle';
+  else S.activeStrokeMode = S.brushMode;
+  if (S.tool === 'free') {
+    S.drawing = true;
+    S.lastPaint = { x: g.gx, y: g.gy };
+    paintDot(g.gx, g.gy);
+  } else {
+    S.shapeStart = { x: g.gx, y: g.gy };
+    S.previewShape = { a: S.shapeStart, b: { x: g.gx, y: g.gy } };
+  }
+  S.stats = null;
+});
+canvas.addEventListener('pointermove', ev => {
+  updateHover(ev);
+  if (!S.n) return;
+  const g = eventToGrid(ev);
+  if (S.drawing && g.inside) {
+    paintSegment(S.lastPaint.x, S.lastPaint.y, g.gx, g.gy);
+    S.lastPaint = { x: g.gx, y: g.gy };
+    S.stats = null;
+  } else if (S.shapeStart && S.previewShape) {
+    S.previewShape.b = { x: g.gx, y: g.gy };
+  }
+});
+function endStroke(ev) {
+  const g = eventToGrid(ev);
+  if (S.drawing) {
+    if (g.inside) paintSegment(S.lastPaint.x, S.lastPaint.y, g.gx, g.gy);
+    S.drawing = false; S.lastPaint = null;
+  } else if (S.shapeStart && S.previewShape) {
+    paintShape(S.shapeStart, S.previewShape.b);
+    S.shapeStart = null; S.previewShape = null;
+  }
+  zeroObstacles();
+  S.activeStrokeMode = S.brushMode;
+  updateStatsNow();
+  updateRangeIfAuto(true);
+  renderScene();
+}
+canvas.addEventListener('pointerup', endStroke);
+canvas.addEventListener('pointercancel', () => {
+  S.drawing = false; S.shapeStart = null; S.previewShape = null;
+  S.activeStrokeMode = S.brushMode;
+});
+canvas.addEventListener('pointerleave', () => { S.hover = null; $('hoverInfo').textContent = '悬停画布查看 U / V / F / k'; });
+canvas.addEventListener('contextmenu', ev => ev.preventDefault());
+canvas.addEventListener('wheel', ev => {
+  ev.preventDefault();
+  const r = Math.max(1, Math.min(40, S.brushRadius + (ev.deltaY < 0 ? 1 : -1)));
+  S.brushRadius = r;
+  syncControlsFromState();
+}, { passive: false });
+
+window.addEventListener('keydown', ev => {
+  if (ev.code === 'Space') {
+    const target = ev.target;
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'BUTTON')) return;
+    ev.preventDefault();
+    togglePause();
+  }
+  if (ev.key === 'Shift') S.shiftActive = true;
+  if (ev.key === 'Escape' && $('phaseModal').classList.contains('open')) closePhase();
+});
+window.addEventListener('keyup', ev => { if (ev.key === 'Shift') S.shiftActive = false; });
+window.addEventListener('blur', () => { S.shiftActive = false; });
+
+/* ---------------- 导入黑白初始图案 ---------------- */
+$('fileInput').addEventListener('change', ev => {
+  const file = ev.target.files && ev.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const c = document.createElement('canvas');
+        c.width = S.w; c.height = S.h;
+        const cctx = c.getContext('2d', { willReadFrequently: true });
+        cctx.fillStyle = '#ffffff';
+        cctx.fillRect(0, 0, S.w, S.h);
+        const scale = Math.min(S.w / img.width, S.h / img.height);
+        const dw = Math.max(1, Math.round(img.width * scale)), dh = Math.max(1, Math.round(img.height * scale));
+        cctx.drawImage(img, (S.w - dw) / 2, (S.h - dh) / 2, dw, dh);
+        const data = cctx.getImageData(0, 0, S.w, S.h).data;
+        S.U.fill(1); S.V.fill(0);
+        for (let i = 0; i < S.n; i++) {
+          const lum = 0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2];
+          if (lum < 128) { S.U[i] = 0.5; S.V[i] = 0.25; }
+        }
+        S.iteration = 0; S.time = 0;
+        S.autoPaused = false; S.autoPauseReason = '';
+        zeroObstacles();
+        clearKeyframes(); saveKeyframe(true);
+        updateStatsNow(); updateRangeNow();
+        toast('已导入黑白图案：黑色→种子（U=0.5, V=0.25），白色→背景（U=1, V=0）');
+      } catch (e) {
+        toast('图片读取失败：' + e.message);
+      }
+    };
+    img.onerror = () => toast('图片读取失败');
+    img.src = reader.result;
+  };
+  reader.onerror = () => toast('文件读取失败');
+  reader.readAsDataURL(file);
+  ev.target.value = '';
+});
+
+/* ---------------- 参数相图：多个小网格并行模拟 ---------------- */
+function buildPeriodicNeighbors(mw, mh) {
+  const n = mw * mh;
+  const nl = new Int32Array(n), nr = new Int32Array(n), nu = new Int32Array(n), nd = new Int32Array(n);
+  for (let y = 0; y < mh; y++) for (let x = 0; x < mw; x++) {
+    const i = y * mw + x;
+    nl[i] = x > 0 ? i - 1 : i + mw - 1;
+    nr[i] = x < mw - 1 ? i + 1 : i - mw + 1;
+    nu[i] = y > 0 ? i - mw : i + n - mw;
+    nd[i] = y < mh - 1 ? i + mw : i - n + mw;
+  }
+  return { nl, nr, nu, nd };
+}
+function miniSeedBlob(sim, gx, gy, radius, vVal, uVal, soft) {
+  const w = sim.mw, h = sim.mh;
+  const ext = Math.ceil(radius * (1 + soft));
+  const x0 = Math.max(0, Math.floor(gx - ext)), x1 = Math.min(w - 1, Math.ceil(gx + ext));
+  const y0 = Math.max(0, Math.floor(gy - ext)), y1 = Math.min(h - 1, Math.ceil(gy + ext));
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+    const d = Math.hypot(x - gx, y - gy);
+    let wgt = d <= radius ? 1 : (d < ext ? Math.max(0, 1 - (d - radius) / Math.max(1e-6, ext - radius)) : 0);
+    if (wgt <= 0) continue;
+    const i = y * w + x;
+    sim.U[i] += (uVal - sim.U[i]) * wgt;
+    sim.V[i] += (vVal - sim.V[i]) * wgt;
+  }
+}
+function createMiniSim(mw, mh, F, K, seed) {
+  const sim = { mw, mh, n: mw * mh, F, K, iter: 0, U: new Float32Array(mw * mh), V: new Float32Array(mw * mh), U2: new Float32Array(mw * mh), V2: new Float32Array(mw * mh) };
+  sim.U.fill(1); sim.V.fill(0);
+  const rng = mulberry32(seed >>> 0);
+  miniSeedBlob(sim, mw * 0.5, mh * 0.5, Math.max(2, mw * 0.06), 0.3, 0.5, 0.4);
+  miniSeedBlob(sim, mw * (0.4 + 0.2 * rng()), mh * (0.4 + 0.2 * rng()), 2 + rng() * 2, 0.2, 0.55, 0.4);
+  return sim;
+}
+function integrateMiniSim(sim, steps, topo) {
+  const { nl, nr, nu, nd } = topo;
+  let A = sim.U, B = sim.U2, C = sim.V, D = sim.V2;
+  const F = sim.F, K = sim.K;
+  for (let s = 0; s < steps; s++) {
+    let bad = false;
+    for (let i = 0; i < sim.n; i++) {
+      const u = A[i], v = C[i];
+      const lapU = A[nl[i]] + A[nr[i]] + A[nu[i]] + A[nd[i]] - 4 * u;
+      const lapV = C[nl[i]] + C[nr[i]] + C[nu[i]] + C[nd[i]] - 4 * v;
+      const uvv = u * v * v;
+      let nu2 = u + S.dt * (S.Du * lapU - uvv + F * (1 - u));
+      let nv2 = v + S.dt * (S.Dv * lapV + uvv - (F + K) * v);
+      if (nu2 > 2 || nv2 > 2 || nu2 < -0.25 || nv2 < -0.25 || nu2 !== nu2 || nv2 !== nv2) bad = true;
+      if (nu2 < 0) nu2 = 0; else if (nu2 > 1) nu2 = 1;
+      if (nv2 < 0) nv2 = 0; else if (nv2 > 1) nv2 = 1;
+      B[i] = nu2; D[i] = nv2;
+    }
+    const t = A; A = B; B = t; const tv = C; C = D; D = tv;
+    sim.iter++;
+    if (bad) break;
+  }
+  sim.U = A; sim.V = C; sim.U2 = B; sim.V2 = D;
+}
+function openPhase() {
+  const grid = Number($('phaseGridSelect').value) || 6;
+  const old = S.phase;
+  if (old && old.grid === grid && old.sims) {
+    $('phaseModal').classList.add('open');
+    renderPhase();
+    return;
+  }
+  const mw = 64, mh = 64;
+  const topo = buildPeriodicNeighbors(mw, mh);
+  const sims = [];
+  const fc = Number($('phaseFCenter').value), kc = Number($('phaseKCenter').value);
+  const fspan = Number($('phaseFSpan').value), kspan = Number($('phaseKSpan').value);
+  for (let j = 0; j < grid; j++) {
+    const K = Math.max(0.001, Math.min(0.12, grid === 1 ? kc : kc + (j / (grid - 1) - 0.5) * kspan));
+    for (let i = 0; i < grid; i++) {
+      const F = Math.max(0.001, Math.min(0.12, grid === 1 ? fc : fc + (i / (grid - 1) - 0.5) * fspan));
+      sims.push(createMiniSim(mw, mh, F, K, (S.seed + 1 + i * 101 + j * 701) >>> 0));
+    }
+  }
+  S.phase = { grid, mw, mh, topo, sims, paused: false, rangeAt: 0, range: { lo: 0, hi: 0.5 } };
+  $('phaseModal').classList.add('open');
+  $('btnPhasePause').textContent = '暂停相图';
+  renderPhase();
+}
+function closePhase() {
+  $('phaseModal').classList.remove('open');
+}
+function resetPhase() {
+  S.phase = null;
+  openPhase();
+}
+function phaseAutoRange() {
+  const P = S.phase;
+  if (!P) return;
+  if (performance.now() - P.rangeAt < 300) return;
+  const mode = $('phaseModeSelect').value;
+  let lo = Infinity, hi = -Infinity;
+  for (const sim of P.sims) {
+    for (let i = 0; i < sim.n; i++) {
+      const val = mode === 'V' ? sim.V[i] : mode === 'diff' ? sim.U[i] - sim.V[i] : mode === 'reaction' ? sim.U[i] * sim.V[i] * sim.V[i] : sim.V[i];
+      if (val < lo) lo = val; if (val > hi) hi = val;
+    }
+  }
+  if (hi - lo < 0.02) { const mid = (hi + lo) / 2; lo = mid - 0.01; hi = mid + 0.01; }
+  if (mode === 'diff') { lo = Math.max(-1, lo); hi = Math.min(1, hi); }
+  P.range = { lo, hi };
+  P.rangeAt = performance.now();
+}
+function renderPhase() {
+  const P = S.phase;
+  if (!P || !$('phaseModal').classList.contains('open')) return;
+  phaseAutoRange();
+  const c = $('phaseCanvas');
+  const cell = Math.max(52, Math.floor(680 / P.grid));
+  const size = P.grid * cell;
+  if (c.width !== size || c.height !== size) { c.width = size; c.height = size; }
+  const cctx = c.getContext('2d');
+  cctx.fillStyle = '#000'; cctx.fillRect(0, 0, size, size);
+  const mode = $('phaseModeSelect').value;
+  const { lo, hi } = P.range;
+  const scale = LUT_SIZE / Math.max(1e-9, hi - lo);
+  const miniCanvas = document.createElement('canvas');
+  miniCanvas.width = P.mw; miniCanvas.height = P.mh;
+  const mctx = miniCanvas.getContext('2d');
+  const mn = P.mw * P.mh;
+  const arr = new Uint8ClampedArray(mn * 4);
+  const img = new ImageData(arr, P.mw, P.mh);
+  const pix = new Uint32Array(arr.buffer);
+  cctx.imageSmoothingEnabled = true;
+  for (let j = 0; j < P.grid; j++) for (let i = 0; i < P.grid; i++) {
+    const sim = P.sims[j * P.grid + i];
+    if (mode === 'UV') {
+      for (let k = 0; k < sim.n; k++) {
+        const r = Math.round(Math.min(1, Math.max(0, sim.U[k])) * 255);
+        const b = Math.round(Math.min(1, Math.max(0, sim.V[k])) * 255);
+        pix[k] = hexPack(r, Math.round(30 + 40 * (sim.U[k] + sim.V[k])), b);
+      }
+    } else {
+      for (let k = 0; k < sim.n; k++) {
+        const val = mode === 'V' ? sim.V[k] : mode === 'diff' ? sim.U[k] - sim.V[k] : sim.U[k] * sim.V[k] * sim.V[k];
+        let idx = (val - lo) * scale;
+        if (idx < 0) idx = 0; else if (idx > LUT_SIZE - 1) idx = LUT_SIZE - 1;
+        pix[k] = lut[idx | 0];
+      }
+    }
+    mctx.putImageData(img, 0, 0);
+    cctx.drawImage(miniCanvas, i * cell, j * cell, cell, cell);
+  }
+  cctx.strokeStyle = '#23354a'; cctx.lineWidth = 1;
+  for (let i = 0; i <= P.grid; i++) {
+    cctx.beginPath(); cctx.moveTo(i * cell, 0); cctx.lineTo(i * cell, size); cctx.stroke();
+    cctx.beginPath(); cctx.moveTo(0, i * cell); cctx.lineTo(size, i * cell); cctx.stroke();
+  }
+  cctx.fillStyle = '#9fb2c8'; cctx.font = '11px monospace'; cctx.textAlign = 'left';
+  const fc = Number($('phaseFCenter').value), fspan = Number($('phaseFSpan').value);
+  const kc = Number($('phaseKCenter').value), kspan = Number($('phaseKSpan').value);
+  for (let i = 0; i < P.grid; i++) {
+    const F = P.grid === 1 ? fc : fc + (i / (P.grid - 1) - 0.5) * fspan;
+    cctx.fillText(F.toFixed(3), i * cell + 4, 10);
+  }
+  cctx.textAlign = 'right';
+  for (let j = 0; j < P.grid; j++) {
+    const K = P.grid === 1 ? kc : kc + (j / (P.grid - 1) - 0.5) * kspan;
+    cctx.save(); cctx.translate(10, j * cell + 4); cctx.rotate(-Math.PI / 2);
+    cctx.fillText(K.toFixed(3), 0, 0); cctx.restore();
+  }
+  const total = P.sims.reduce((a, s) => a + s.iter, 0);
+  $('phaseStatus').textContent = `并行 ${P.grid}×${P.grid} 个小网格（每格 ${P.mw}×${P.mh}），总步数 ${total.toLocaleString('zh-CN')}，F 沿横轴、k 沿纵轴。`;
+}
+function phaseTick(steps) {
+  const P = S.phase;
+  if (!P || !$('phaseModal').classList.contains('open') || P.paused) return;
+  const t0 = performance.now();
+  let done = 0;
+  for (let s = 0; s < steps; s++) {
+    for (const sim of P.sims) integrateMiniSim(sim, 1, P.topo);
+    done++;
+    if (performance.now() - t0 > 28) break;
+  }
+  if (done) renderPhase();
+}
+$('phaseCanvas').addEventListener('pointermove', ev => {
+  const P = S.phase;
+  if (!P) return;
+  const c = ev.currentTarget;
+  const rect = c.getBoundingClientRect();
+  const px = (ev.clientX - rect.left) / rect.width * c.width;
+  const py = (ev.clientY - rect.top) / rect.height * c.height;
+  const cell = c.width / P.grid;
+  const ci = Math.max(0, Math.min(P.grid - 1, Math.floor(px / cell)));
+  const cj = Math.max(0, Math.min(P.grid - 1, Math.floor(py / cell)));
+  const sim = P.sims[cj * P.grid + ci];
+  let maxV = 0, mean = 0;
+  for (let i = 0; i < sim.n; i++) { mean += sim.V[i]; if (sim.V[i] > maxV) maxV = sim.V[i]; }
+  mean /= sim.n;
+  $('phaseStatus').textContent = `单元(${ci},${cj})  F=${sim.F.toFixed(4)}  k=${sim.K.toFixed(4)}  t=#${sim.iter}  V mean=${mean.toFixed(3)} max=${maxV.toFixed(3)}`;
+});
+
+/* ---------------- 自动寻找“有趣参数” ---------------- */
+function scoreCandidate(sim, topo) {
+  const { nl, nr, nu, nd } = topo;
+  let sum = 0, sum2 = 0, edge = 0, cover = 0, maxV = 0;
+  const n = sim.n;
+  for (let i = 0; i < n; i++) {
+    const v = sim.V[i];
+    sum += v; sum2 += v * v;
+    if (v > 0.1) cover++;
+    if (v > maxV) maxV = v;
+    const lap = sim.V[nl[i]] + sim.V[nr[i]] + sim.V[nu[i]] + sim.V[nd[i]] - 4 * v;
+    edge += lap < 0 ? -lap : lap;
+  }
+  const mean = sum / n, variance = sum2 / n - mean * mean;
+  edge /= n; cover /= n;
+  if (maxV < 0.2 || mean < 0.03 || mean > 0.85 || !isFinite(variance + edge)) return null;
+  const coverScore = cover > 0.08 && cover < 0.75 ? 1 : 0.55;
+  const score = Math.log1p(variance * 60) * Math.log1p(edge * 240) * coverScore;
+  return { score, mean, variance, edge, cover, maxV };
+}
+async function findInterestingParams() {
+  if (S.searchRunning) return;
+  S.searchRunning = true;
+  $('btnFindInteresting').disabled = true;
+  const prog = $('searchProgress');
+  prog.classList.add('show');
+  const mw = 56, mh = 56;
+  const topo = buildPeriodicNeighbors(mw, mh);
+  const Fs = [0.015, 0.022, 0.028, 0.034, 0.04, 0.05, 0.06, 0.075];
+  const Ks = [0.048, 0.052, 0.056, 0.06, 0.064, 0.068, 0.072];
+  const candidates = [];
+  for (const F of Fs) for (const K of Ks) candidates.push({ F, K });
+  const results = [];
+  const steps = 650;
+  for (let c = 0; c < candidates.length; c++) {
+    const { F, K } = candidates[c];
+    const sim = createMiniSim(mw, mh, F, K, (S.seed + c * 977 + F * 1e6 + K * 1e6) >>> 0);
+    integrateMiniSim(sim, steps, topo);
+    const met = scoreCandidate(sim, topo);
+    if (met) results.push({ F, K, met });
+    prog.textContent = `正在扫描参数空间… ${c + 1} / ${candidates.length}（已完成 ${results.length} 个有效结果）`;
+    if ((c & 3) === 3) await new Promise(r => setTimeout(r, 0));
+  }
+  prog.classList.remove('show');
+  $('btnFindInteresting').disabled = false;
+  S.searchRunning = false;
+  if (!results.length) { toast('未找到足够有趣的参数，请重试或调整 Du/Dv'); return; }
+  results.sort((a, b) => b.met.score - a.met.score);
+  const best = results[0];
+  S.F = best.F; S.K = best.K;
+  updateGlobalF(S.F); updateGlobalK(S.K); restoreAllLocalFK();
+  resetChemicalFields();
+  const rng = mulberry32(S.seed);
+  for (let i = 0; i < 14; i++) seedBlob(S.w * (0.08 + 0.84 * rng()), S.h * (0.08 + 0.84 * rng()), 2 + rng() * 4, 0.5, 0.5, 0.35);
+  S.iteration = 0; S.time = 0; S.autoPaused = false; S.autoPauseReason = '';
+  S.preset = 'spots';
+  refreshDecay();
+  clearKeyframes(); saveKeyframe(true);
+  updateStatsNow(); updateRangeNow();
+  syncControlsFromState();
+  toast(`有趣参数 F=${best.F.toFixed(4)}, k=${best.K.toFixed(4)}（得分 ${best.met.score.toFixed(1)}；方差 ${best.met.variance.toFixed(4)}，边缘 ${best.met.edge.toFixed(4)}）`);
+}
+
+/* ---------------- 导出 PNG / 参数 JSON ---------------- */
+function downloadBlob(blob, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+}
+function exportPNG() {
+  suppressOverlay = true;
+  renderScene();
+  canvas.toBlob(blob => {
+    suppressOverlay = false;
+    if (blob) downloadBlob(blob, `reaction-diffusion_${S.preset}_#${S.iteration}.png`);
+    else toast('PNG 导出失败');
+    renderScene();
+  }, 'image/png');
+}
+function exportJSON() {
+  const data = {
+    app: '反应扩散生态箱 / Gray–Scott 交互模拟器',
+    exportedAt: new Date().toISOString(),
+    seed: S.seed,
+    preset: PRESET_MAP[S.preset].name,
+    grid: { width: S.w, height: S.h, dx: 1 },
+    model: {
+      Du: S.Du, Dv: S.Dv, F_global: S.F, k_global: S.K,
+      dt: S.dt, boundary: S.boundary,
+      integrator: 'explicit-Euler',
+      laplacian: '5-point-finite-difference',
+      clamp: [0, 1],
+    },
+    state: { iteration: S.iteration, time: S.time, paused: S.paused },
+    visualization: { mode: S.visMode, colormap: S.colormap, rangeAuto: S.rangeAuto, rangeMin: S.rangeMin, rangeMax: S.rangeMax },
+    note: '相同 seed 与上述参数从同一预置场景重置时，迭代序列可复现。',
+  };
+  downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
+    `reaction-diffusion_params_${S.preset}.json`);
+  toast('参数 JSON 已导出');
+}
+
+/* ---------------- 主循环（模拟与渲染分离） ---------------- */
+let lastFrameAt = performance.now();
+let fpsValue = 60;
+let framesThisSecond = 0, fpsSecondStart = performance.now();
+
+function frame(now) {
+  if (S.phase && $('phaseModal').classList.contains('open')) {
+    phaseTick(Number($('phaseStepsRange').value) || 2);
+  }
+  if (!S.paused && !S.autoPaused) {
+    S.frameCounter++;
+    if (S.frameCounter >= S.frameSkip) {
+      S.frameCounter = 0;
+      const target = S.autoSpeed ? S.autoSteps : S.speedSteps;
+      let done = 0, batchMs = 0;
+      S.lastFrameSteps = 0;
+      while (done < target) {
+        const t0 = performance.now();
+        const res = runSimSteps(1);
+        batchMs += performance.now() - t0;
+        done++;
+        if (res.diverged) break;
+        if (batchMs > 30) break;
+      }
+      if (done) {
+        S.lastFrameSteps = done;
+        S.lastStepMs = batchMs / done;
+        if (S.autoSpeed) {
+          if (batchMs > 18 && S.autoSteps > 1) S.autoSteps--;
+          else if (batchMs < 10 && S.autoSteps < S.speedSteps) S.autoSteps++;
+        } else {
+          S.autoSteps = S.speedSteps;
+        }
+        if (S.lastStepMs > 45) S.frameSkip = Math.min(8, Math.max(1, Math.ceil(S.lastStepMs / 40)));
+        else if (S.frameSkip > 1 && S.lastStepMs < 22) S.frameSkip = Math.max(1, S.frameSkip - 1);
+        saveKeyframeIfDue();
+        S.stats = null;
+      }
+      updateDataPanel();
+
+
+    }
+  }
+  if (!S.stats || now - S.statsAt > 250) updateStatsNow();
+  updateRangeIfAuto(false);
+  if (now - S.stabilityAt > 1000) { updateStabilityNote(); S.stabilityAt = now; }
+  // 实时统计：约每 250ms 一次，避免每帧全数组扫描
+
+  framesThisSecond++;
+  if (now - fpsSecondStart >= 1000) {
+    fpsValue = framesThisSecond * 1000 / (now - fpsSecondStart);
+    framesThisSecond = 0; fpsSecondStart = now;
+  }
+  $('dataFPS').textContent = fpsValue.toFixed(0);
+  $('hudFPS').textContent = `渲染 ${fpsValue.toFixed(0)} FPS`;
+  renderScene();
+  requestAnimationFrame(frame);
+}
+
+/* ---------------- UI 同步与事件绑定 ---------------- */
+function setStatus(kind, text) {
+  const el = $('statusPill');
+  el.className = kind === 'run' ? '' : kind;
+  el.textContent = text;
+}
+function togglePause() {
+  if (S.paused && S.autoPaused) {
+    S.autoPaused = false; S.autoPauseReason = '';
+    S.paused = false;
+  } else {
+    S.paused = !S.paused;
+  }
+  updatePauseUI();
+  updateStabilityNote();
+  renderScene();
+}
+function updatePauseUI() {
+  const btn = $('btnPause');
+  if (S.paused) {
+    btn.textContent = S.autoPaused ? '⚠ 继续' : '▶ 继续';
+    setStatus(S.autoPaused ? 'bad' : 'paused', S.autoPaused ? '自动暂停：数值发散' : '已暂停');
+  } else {
+    btn.textContent = '⏸ 暂停';
+    setStatus('run', '运行中');
+  }
+  $('dataStatus').textContent = S.paused ? (S.autoPaused ? '发散暂停' : '已暂停') : '运行中';
+  $('dataStatus').className = 'mono ' + (S.autoPaused ? 'badText' : S.paused ? '' : 'okText');
+}
+
+function populatePresetSelect() {
+  const sel = $('presetSelect');
+  sel.innerHTML = '';
+  for (const p of PRESETS) {
+    const opt = document.createElement('option');
+    opt.value = p.id; opt.textContent = p.name;
+    sel.appendChild(opt);
+  }
+  sel.value = S.preset;
+  $('presetDesc').textContent = PRESET_MAP[S.preset].desc;
+}
+
+function syncControlsFromState() {
+  $('seedInput').value = S.seed;
+  $('duRange').value = S.Du; $('duVal').textContent = S.Du.toFixed(3);
+  $('dvRange').value = S.Dv; $('dvVal').textContent = S.Dv.toFixed(3);
+  $('fRange').value = S.F; $('fVal').textContent = S.F.toFixed(4);
+  $('kRange').value = S.K; $('kVal').textContent = S.K.toFixed(4);
+  $('dtRange').value = S.dt; $('dtVal').textContent = S.dt.toFixed(2);
+  $('boundarySelect').value = S.boundary;
+  $('gridSelect').value = String(S.w || S.gridSize);
+  $('integratorSelect').value = S.integrator;
+  $('speedRange').value = S.speedSteps; $('speedVal').textContent = S.speedSteps;
+  $('autoSpeedCheck').checked = S.autoSpeed;
+  $('presetSelect').value = S.preset;
+  $('presetDesc').textContent = PRESET_MAP[S.preset].desc;
+  $('brushRadiusRange').value = S.brushRadius; $('brushRadiusVal').textContent = S.brushRadius;
+  $('brushValueRange').value = S.brushValue; $('brushValueVal').textContent = S.brushValue.toFixed(2);
+  $('brushSoftRange').value = S.brushSoft; $('brushSoftVal').textContent = S.brushSoft.toFixed(2);
+  $('localValueRange').value = S.localValue; $('localValueVal').textContent = S.localValue.toFixed(4);
+  $('visModeSelect').value = S.visMode;
+  $('colormapSelect').value = S.colormap;
+  $('rangeAutoCheck').checked = S.rangeAuto;
+  $('contourLevelRange').value = S.contourLevel; $('contourLevelVal').textContent = S.contourLevel.toFixed(3);
+  document.querySelectorAll('#brushModeSeg button').forEach(b => b.classList.toggle('active', b.dataset.mode === S.brushMode));
+  document.querySelectorAll('#toolSeg button').forEach(b => b.classList.toggle('active', b.dataset.tool === S.tool));
+  updateBrushValueLabel();
+  syncRangeControls();
+  updateMapLegend();
+  updateKeyframeUI();
+  updateDataPanel();
+  updateStabilityNote();
+  updatePauseUI();
+}
+function updateBrushValueLabel() {
+  const map = { V: '投放 V 浓度', U: '投放 U 浓度', erase: '擦除（固定 U=1,V=0）', F: '局部 F 值', K: '局部 k 值', restore: '恢复 F/k（笔刷）' };
+  $('brushValueLabel').textContent = map[S.brushMode] || '笔刷值';
+  $('brushValueRange').disabled = (S.brushMode === 'erase' || S.brushMode === 'restore' || S.brushMode === 'F' || S.brushMode === 'K');
+}
+
+function bindUI() {
+  populatePresetSelect();
+  $('presetSelect').addEventListener('change', ev => {
+    $('presetDesc').textContent = PRESET_MAP[ev.target.value].desc;
+  });
+  $('btnPresetApply').addEventListener('click', () => loadPreset($('presetSelect').value));
+  $('btnPause').addEventListener('click', togglePause);
+  $('btnStep1').addEventListener('click', () => manualSteps(1, 1));
+  $('btnStep10').addEventListener('click', () => manualSteps(10, 10));
+  $('btnStep100').addEventListener('click', () => manualSteps(100, 10));
+  $('btnReset').addEventListener('click', () => loadPreset(S.preset));
+  $('btnFullscreen').addEventListener('click', () => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else document.documentElement.requestFullscreen().catch(() => toast('浏览器拒绝了全屏请求'));
+  });
+  $('btnSeedApply').addEventListener('click', () => {
+    let seed = Math.floor(Number($('seedInput').value));
+    if (!Number.isFinite(seed)) seed = 1;
+    S.seed = seed >>> 0;
+    loadPreset(S.preset);
+    toast(`已应用随机种子 ${S.seed}，场景可复现`);
+  });
+  $('btnSeedRandom').addEventListener('click', () => {
+    S.seed = (Math.random() * 4294967296) >>> 0;
+    $('seedInput').value = S.seed;
+    loadPreset(S.preset);
+    toast(`已随机化种子 ${S.seed}`);
+  });
+  const rangeBind = (id, out, fmt, fn) => {
+    $(id).addEventListener('input', ev => {
+      const v = Number(ev.target.value);
+      $(out).textContent = fmt(v);
+      fn(v);
+    });
+  };
+  rangeBind('duRange', 'duVal', v => v.toFixed(3), v => { S.Du = v; updateStabilityNote(); });
+  rangeBind('dvRange', 'dvVal', v => v.toFixed(3), v => { S.Dv = v; updateStabilityNote(); });
+  rangeBind('fRange', 'fVal', v => v.toFixed(4), v => updateGlobalF(v));
+  rangeBind('kRange', 'kVal', v => v.toFixed(4), v => updateGlobalK(v));
+  rangeBind('dtRange', 'dtVal', v => v.toFixed(2), v => { S.dt = v; updateStabilityNote(); });
+  rangeBind('speedRange', 'speedVal', v => String(Math.round(v)), v => {
+    S.speedSteps = Math.round(v);
+    if (!S.autoSpeed) S.autoSteps = S.speedSteps;
+    if (S.autoSpeed && S.autoSteps > S.speedSteps) S.autoSteps = S.speedSteps;
+  });
+  $('autoSpeedCheck').addEventListener('change', ev => { S.autoSpeed = ev.target.checked; S.autoSteps = S.speedSteps; });
+  $('boundarySelect').addEventListener('change', ev => {
+    S.boundary = ev.target.value;
+    rebuildTopology();
+    toast('边界条件已切换：' + { periodic: '周期', reflect: '反射（零通量）', fixed: '固定（外边界 U=1,V=0）' }[S.boundary]);
+  });
+  $('gridSelect').addEventListener('change', ev => setGridSize(Number(ev.target.value)));
+  $('integratorSelect').addEventListener('change', ev => { S.integrator = ev.target.value; });
+  document.querySelectorAll('#brushModeSeg button').forEach(btn => btn.addEventListener('click', () => {
+    S.brushMode = btn.dataset.mode;
+    document.querySelectorAll('#brushModeSeg button').forEach(b => b.classList.toggle('active', b === btn));
+    updateBrushValueLabel();
+  }));
+  document.querySelectorAll('#toolSeg button').forEach(btn => btn.addEventListener('click', () => {
+    S.tool = btn.dataset.tool;
+    document.querySelectorAll('#toolSeg button').forEach(b => b.classList.toggle('active', b === btn));
+  }));
+  rangeBind('brushRadiusRange', 'brushRadiusVal', v => String(Math.round(v)), v => { S.brushRadius = Math.round(v); });
+  rangeBind('brushValueRange', 'brushValueVal', v => v.toFixed(2), v => { S.brushValue = v; });
+  rangeBind('brushSoftRange', 'brushSoftVal', v => v.toFixed(2), v => { S.brushSoft = v; });
+  rangeBind('localValueRange', 'localValueVal', v => v.toFixed(4), v => { S.localValue = v; });
+  $('btnClearObstacles').addEventListener('click', () => {
+    S.mask.fill(0); S.hasMask = false; zeroObstacles(); updateStatsNow(); toast('障碍已全部清除');
+  });
+  $('btnClearLocal').addEventListener('click', () => { restoreAllLocalFK(); toast('F/k 已恢复为全局值'); });
+  $('btnImportImage').addEventListener('click', () => $('fileInput').click());
+  $('visModeSelect').addEventListener('change', ev => {
+    S.visMode = ev.target.value;
+    if (S.rangeAuto) updateRangeNow(); else syncRangeControls();
+    updateMapLegend();
+  });
+  $('colormapSelect').addEventListener('change', ev => { S.colormap = ev.target.value; buildLUT(S.colormap); });
+  $('rangeAutoCheck').addEventListener('change', ev => {
+    S.rangeAuto = ev.target.checked;
+    if (S.rangeAuto) updateRangeNow(); else syncRangeControls();
+  });
+  $('rangeMinRange').addEventListener('input', ev => {
+    if (!S.rangeAuto) {
+      S.rangeMin = Math.min(Number(ev.target.value), S.rangeMax - 1e-4);
+      ev.target.value = S.rangeMin; $('rangeMinVal').textContent = S.rangeMin.toFixed(3);
+    }
+  });
+  $('rangeMaxRange').addEventListener('input', ev => {
+    if (!S.rangeAuto) {
+      S.rangeMax = Math.max(Number(ev.target.value), S.rangeMin + 1e-4);
+      ev.target.value = S.rangeMax; $('rangeMaxVal').textContent = S.rangeMax.toFixed(3);
+    }
+  });
+  rangeBind('contourLevelRange', 'contourLevelVal', v => v.toFixed(3), v => { S.contourLevel = v; });
+  $('btnPhase').addEventListener('click', openPhase);
+  $('btnPhaseClose').addEventListener('click', closePhase);
+  $('phaseModal').addEventListener('click', ev => { if (ev.target === $('phaseModal')) closePhase(); });
+  $('btnPhasePause').addEventListener('click', () => {
+    const P = S.phase;
+    if (!P) return;
+    P.paused = !P.paused;
+    $('btnPhasePause').textContent = P.paused ? '继续相图' : '暂停相图';
+  });
+  $('btnPhaseReset').addEventListener('click', resetPhase);
+  $('phaseGridSelect').addEventListener('change', resetPhase);
+  ['phaseFCenter', 'phaseKCenter', 'phaseFSpan', 'phaseKSpan'].forEach(id => {
+    $(id).addEventListener('input', () => {
+      $('phaseFCenterVal').textContent = Number($('phaseFCenter').value).toFixed(3);
+      $('phaseKCenterVal').textContent = Number($('phaseKCenter').value).toFixed(3);
+      $('phaseFSpanVal').textContent = Number($('phaseFSpan').value).toFixed(3);
+      $('phaseKSpanVal').textContent = Number($('phaseKSpan').value).toFixed(3);
+    });
+    $(id).addEventListener('change', resetPhase);
+  });
+  $('phaseStepsRange').addEventListener('input', ev => { $('phaseStepsVal').textContent = ev.target.value; });
+  $('phaseModeSelect').addEventListener('change', () => { if (S.phase) S.phase.rangeAt = 0; });
+  $('btnFindInteresting').addEventListener('click', findInterestingParams);
+  $('btnRewind').addEventListener('click', rewindOneKeyframe);
+  $('kfInterval').addEventListener('change', updateKeyframeUI);
+  $('kfBudget').addEventListener('change', updateKeyframeUI);
+  $('btnExportPNG').addEventListener('click', exportPNG);
+  $('btnExportJSON').addEventListener('click', exportJSON);
+  window.addEventListener('resize', () => renderScene());
+  document.addEventListener('fullscreenchange', () => setTimeout(renderScene, 60));
+}
+
+/* ---------------- 启动 ---------------- */
+function toast(msg) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => el.classList.remove('show'), 2600);
+}
+
+function initApp() {
+  allocateArrays(256, 256);
+  rebuildTopology();
+  bindUI();
+  loadPreset('spots', { quiet: true });
+  updatePauseUI();
+  renderScene();
+  requestAnimationFrame(frame);
+}
+initApp();
+
+</script>
+</body>
+</html>
