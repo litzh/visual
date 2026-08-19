@@ -1,0 +1,1548 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>肥皂泡模拟器 · Canvas 2D</title>
+<style>
+:root{
+  --bg:#0b0e14; --panel:#111722; --panel2:#0e141f; --line:#1e2a3a; --txt:#d8e2f0; --txt2:#8fa0b8;
+  --accent:#57c7ff; --accent2:#f5b84c; --danger:#ff5d5d; --good:#4fd68b;
+}
+*{box-sizing:border-box; margin:0; padding:0;}
+html,body{height:100%;}
+body{
+  background:var(--bg); color:var(--txt);
+  font-family:"PingFang SC","Microsoft YaHei",system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+  font-size:14px; overflow:hidden;
+}
+button,select,input{font-family:inherit; font-size:13px; color:var(--txt); background:var(--panel2); border:1px solid var(--line); border-radius:6px; padding:5px 8px; outline:none; cursor:pointer;}
+button:hover{background:#182234;} button.active{border-color:var(--accent); color:var(--accent);}
+input[type=range]{width:100%; padding:0; background:transparent; border:none; cursor:pointer; accent-color:var(--accent);}
+input[type=number],select{background:var(--panel2);}
+input[type=checkbox]{accent-color:var(--accent); width:16px; height:16px; cursor:pointer;}
+label{user-select:none;}
+h1{font-size:17px; font-weight:600; letter-spacing:.5px;}
+h2{font-size:13px; font-weight:600; color:var(--accent); margin-bottom:6px;}
+header{
+  height:52px; display:flex; align-items:center; gap:14px; padding:0 16px;
+  background:linear-gradient(180deg,#101826,#0c121e); border-bottom:1px solid var(--line); flex:0 0 auto;
+}
+header .spacer{flex:1;}
+#main{display:flex; gap:10px; padding:10px; height:calc(100vh - 52px);}
+#canvasWrap{
+  flex:1; min-width:0; position:relative; background:#0a0e15; border:1px solid var(--line); border-radius:12px;
+  overflow:hidden; display:flex; align-items:center; justify-content:center;
+}
+canvas{display:block; width:100%; height:100%; cursor:crosshair; touch-action:none;}
+#legend{
+  position:absolute; left:12px; top:12px; pointer-events:none; display:flex; flex-direction:column; gap:6px;
+}
+#legend .leg{
+  display:flex; align-items:center; gap:6px; font-size:11px; color:var(--txt2);
+  background:rgba(10,14,21,.72); padding:4px 8px; border-radius:8px; border:1px solid var(--line);
+}
+#legend .swatch{width:14px; height:14px; border-radius:4px; display:inline-block;}
+#statusBadge{
+  position:absolute; right:12px; top:12px; padding:5px 10px; border-radius:999px; font-size:12px;
+  background:rgba(10,14,21,.78); border:1px solid var(--line); color:var(--good);
+}
+#statusBadge.paused{color:var(--accent2);}
+#statusBadge.diverged{color:var(--danger);}
+#panel{
+  width:360px; flex:0 0 360px; overflow-y:auto; overflow-x:hidden; padding:10px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px;
+}
+#panel section{background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:9px 10px; margin-bottom:10px;}
+.row{display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;}
+.row > label{flex:0 0 auto; min-width:66px; color:var(--txt2); font-size:12px;}
+.row .val{font-size:12px; color:var(--accent2); min-width:48px; text-align:right;}
+.row .unit{font-size:11px; color:var(--txt2); width:34px;}
+.seg{display:flex; gap:6px; flex-wrap:wrap;}
+.seg button{padding:5px 10px;}
+#data{display:grid; grid-template-columns:1fr 1fr; gap:6px 10px;}
+#data .item{display:flex; flex-direction:column; background:#0a101a; border:1px solid var(--line); border-radius:8px; padding:6px 8px;}
+#data .item .k{font-size:11px; color:var(--txt2);}
+#data .item .v{font-size:15px; font-weight:600; color:var(--accent); font-variant-numeric:tabular-nums;}
+#data .item .v.warn{color:var(--danger);}
+#data .item .v.good{color:var(--good);}
+#msgBox{margin-top:6px; font-size:12px; line-height:1.5; color:var(--txt2); min-height:20px;}
+#spectrumBox{display:flex; flex-direction:column; gap:4px; margin-top:6px;}
+#spectrumBox canvas{width:100%; height:70px; background:#0a0e15; border:1px solid var(--line); border-radius:6px;}
+#specLabel{font-size:11px; color:var(--txt2);}
+@media (max-width:900px){
+  body{overflow:auto;}
+  #main{flex-direction:column; height:auto;}
+  #canvasWrap{height:60vh;}
+  #panel{width:100%; flex:1;}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>肥皂泡模拟器</h1>
+  <span style="font-size:12px;color:var(--txt2)">三角网格 · 质量—弹簧 · 薄膜干涉 · Canvas 2D</span>
+  <span class="spacer"></span>
+  <button id="btnPause">暂停</button>
+  <button id="btnStep">单步</button>
+  <button id="btnReset">重置</button>
+  <button id="btnFullscreen">全屏</button>
+</header>
+<div id="main">
+  <div id="canvasWrap">
+    <canvas id="cv"></canvas>
+    <div id="legend">
+      <div class="leg"><span class="swatch" style="background:#4d9eff"></span> 光学干涉（RGB）</div>
+      <div class="leg"><span class="swatch" style="background:#46e0a0"></span> 厚度场</div>
+      <div class="leg"><span class="swatch" style="background:#f0b64c"></span> 几何网格</div>
+    </div>
+    <div id="statusBadge">运行中</div>
+  </div>
+  <div id="panel">
+    <section>
+      <h2>预置场景</h2>
+      <div class="row">
+        <select id="preset">
+          <option value="sphere">静止球形泡</option>
+          <option value="drain">重力排液</option>
+          <option value="blow">快速吹大</option>
+          <option value="lowgamma">低表面张力大变形</option>
+          <option value="mono">单色光干涉条纹</option>
+          <option value="white">白光彩色干涉</option>
+          <option value="rupture">即将破裂的黑膜区域</option>
+        </select>
+        <button id="btnPreset">应用</button>
+      </div>
+      <div class="row">
+        <label>随机种子</label>
+        <input id="seed" type="number" value="20250819" style="width:110px">
+        <button id="btnSeed">应用种子</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>运行控制</h2>
+      <div class="row seg">
+        <button id="btnPause2">暂停 / 继续</button>
+        <button id="btnStep2">单步执行</button>
+        <button id="btnReset2">重置</button>
+      </div>
+      <div id="msgBox">就绪。可在画布上拖动泡泡、戳动或吹气。</div>
+    </section>
+
+    <section>
+      <h2>几何与物理</h2>
+      <div class="row">
+        <label>表面张力 γ</label>
+        <input id="gamma" type="range" min="0.002" max="0.2" step="0.001" value="0.03">
+        <span class="val" id="gammaVal">0.030</span><span class="unit">N/m</span>
+      </div>
+      <div class="row">
+        <label>重力</label>
+        <input id="gravityToggle" type="checkbox" checked>
+        <span style="font-size:12px;color:var(--txt2)">开启</span>
+        <input id="gravityStr" type="range" min="0" max="30" step="0.5" value="9.8" style="width:120px">
+        <span class="val" id="gravityStrVal">9.8</span><span class="unit">m/s²</span>
+      </div>
+      <div class="row">
+        <label>阻尼</label>
+        <input id="damping" type="range" min="0" max="2" step="0.05" value="0.5">
+        <span class="val" id="dampingVal">0.50</span><span class="unit">s⁻¹</span>
+      </div>
+      <div class="row">
+        <label>目标体积</label>
+        <input id="volTarget" type="range" min="0.3" max="3.5" step="0.01" value="1.0">
+        <span class="val" id="volTargetVal">1.00</span><span class="unit">V₀</span>
+      </div>
+      <div class="row">
+        <label>网格精度</label>
+        <select id="meshLevel">
+          <option value="0">极低（12 顶点）</option>
+          <option value="1">低（42 顶点）</option>
+          <option value="2">较低（162 顶点）</option>
+          <option value="3" selected>中（642 顶点）</option>
+          <option value="4">高（2562 顶点）</option>
+          <option value="5">极高（10242 顶点，较慢）</option>
+        </select>
+      </div>
+    </section>
+
+    <section>
+      <h2>薄膜厚度与排液</h2>
+      <div class="row">
+        <label>平均厚度</label>
+        <input id="avgThick" type="range" min="30" max="1500" step="5" value="500">
+        <span class="val" id="avgThickVal">500</span><span class="unit">nm</span>
+      </div>
+      <div class="row">
+        <label>排液速度</label>
+        <input id="drainSpeed" type="range" min="0" max="0.05" step="0.0005" value="0.006">
+        <span class="val" id="drainSpeedVal">0.0060</span><span class="unit">m/s</span>
+      </div>
+      <div class="row">
+        <label>扩散</label>
+        <input id="diffusion" type="range" min="0" max="1" step="0.01" value="0.15">
+        <span class="val" id="diffusionVal">0.15</span><span class="unit">m²/s</span>
+      </div>
+      <div class="row">
+        <label>随机扰动</label>
+        <input id="perturbAmp" type="range" min="0" max="8" step="0.1" value="1.2">
+        <span class="val" id="perturbAmpVal">1.2</span><span class="unit">nm/步</span>
+      </div>
+      <div class="row">
+        <label>破裂机制</label>
+        <input id="ruptureToggle" type="checkbox" checked>
+        <span style="font-size:12px;color:var(--txt2)">允许</span>
+        <input id="ruptureThresh" type="range" min="5" max="120" step="1" value="40">
+        <span class="val" id="ruptureThreshVal">40</span><span class="unit">nm</span>
+      </div>
+    </section>
+
+    <section>
+      <h2>光学</h2>
+      <div class="row">
+        <label>光源</label>
+        <select id="lightMode">
+          <option value="white">白光</option>
+          <option value="mono">单色光</option>
+        </select>
+        <label style="min-width:auto">λ</label>
+        <input id="monoWavelength" type="range" min="380" max="700" step="1" value="532">
+        <span class="val" id="monoWavelengthVal">532</span><span class="unit">nm</span>
+      </div>
+      <div class="row">
+        <label>薄膜折射率 n</label>
+        <input id="refractiveIndex" type="range" min="1.05" max="1.60" step="0.01" value="1.33">
+        <span class="val" id="refractiveIndexVal">1.33</span>
+      </div>
+      <div class="row">
+        <label>光源方位</label>
+        <input id="lightAzimuth" type="range" min="-180" max="180" step="1" value="35">
+        <span class="val" id="lightAzimuthVal">35</span><span class="unit">°</span>
+      </div>
+      <div class="row">
+        <label>光源仰角</label>
+        <input id="lightElevation" type="range" min="-85" max="85" step="1" value="25">
+        <span class="val" id="lightElevationVal">25</span><span class="unit">°</span>
+      </div>
+      <div class="row">
+        <label>环境亮度</label>
+        <input id="ambient" type="range" min="0" max="1" step="0.01" value="0.18">
+        <span class="val" id="ambientVal">0.18</span>
+      </div>
+      <div class="row">
+        <label>观察方位</label>
+        <input id="camYaw" type="range" min="-180" max="180" step="1" value="40">
+        <span class="val" id="camYawVal">40</span><span class="unit">°</span>
+      </div>
+      <div class="row">
+        <label>观察仰角</label>
+        <input id="camPitch" type="range" min="-60" max="60" step="1" value="15">
+        <span class="val" id="camPitchVal">15</span><span class="unit">°</span>
+      </div>
+      <div class="row">
+        <label>光学干涉</label>
+        <input id="interference" type="checkbox" checked>
+        <span style="font-size:12px;color:var(--txt2)">关闭后显示普通透明膜</span>
+      </div>
+      <div class="row seg">
+        <label style="min-width:auto">视图</label>
+        <button id="viewOptical" class="active">光学</button>
+        <button id="viewThickness">厚度</button>
+        <button id="viewGeometry">几何</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>交互</h2>
+      <div class="row seg">
+        <button id="modeDrag" class="active">拖动</button>
+        <button id="modePoke">戳动</button>
+        <button id="modeBlow">吹气</button>
+        <button id="btnBlowPlus" title="增加内部体积">吹气 +</button>
+        <button id="btnBlowMinus" title="减少内部体积">放气 −</button>
+      </div>
+      <div style="font-size:11px;color:var(--txt2)">拖动：左键拖拽表面顶点，空白处旋转视角。戳动：点击表面产生内凹脉冲。吹气：点击表面向外膨胀并增大目标体积。</div>
+    </section>
+
+    <section>
+      <h2>实时数据</h2>
+      <div id="data">
+        <div class="item"><span class="k">体积 V</span><span class="v" id="dVol">–</span></div>
+        <div class="item"><span class="k">目标体积 V₀</span><span class="v" id="dVolT">–</span></div>
+        <div class="item"><span class="k">体积约束误差</span><span class="v" id="dVolErr">–</span></div>
+        <div class="item"><span class="k">内部压强 P</span><span class="v" id="dPres">–</span></div>
+        <div class="item"><span class="k">网格能量 E</span><span class="v" id="dEnergy">–</span></div>
+        <div class="item"><span class="k">平均厚度 h̄</span><span class="v" id="dHavg">–</span></div>
+        <div class="item"><span class="k">最小 / 最大厚度</span><span class="v" id="dHminmax">–</span></div>
+        <div class="item"><span class="k">破裂面数</span><span class="v" id="dRupt">–</span></div>
+        <div class="item"><span class="k">顶点 / 面</span><span class="v" id="dMesh">–</span></div>
+        <div class="item"><span class="k">FPS / 子步</span><span class="v" id="dFps">–</span></div>
+      </div>
+      <div id="spectrumBox">
+        <div id="specLabel">悬停表面查看局部膜厚与反射光谱</div>
+        <canvas id="spectrumCanvas" width="320" height="70"></canvas>
+      </div>
+    </section>
+
+    <section>
+      <h2>原理说明</h2>
+      <p>本模拟用<b>质量—弹簧三角网格</b>近似闭合泡膜：每个顶点受表面张力（弹簧）、内部压强、阻尼和重力作用。内部压强按简化 Laplace–Young 关系与体积约束共同计算。</p>
+      <div class="eq">
+        <svg viewBox="0 0 300 40"><text x="8" y="28" fill="#d8e2f0" font-size="15" font-style="italic">ΔP ≈ 2γ / R</text></svg>
+        <svg viewBox="0 0 300 40"><text x="8" y="28" fill="#d8e2f0" font-size="15" font-style="italic">F<sub>ij</sub> = k (|x<sub>j</sub>−x<sub>i</sub>| − l<sub>0</sub>) e<sub>ij</sub></text></svg>
+        <svg viewBox="0 0 300 40"><text x="8" y="28" fill="#d8e2f0" font-size="15" font-style="italic">V = ⅙ Σ det(x<sub>a</sub>, x<sub>b</sub>, x<sub>c</sub>)</text></svg>
+      </div>
+      <p>光学上，对每个表面点按薄板等倾干涉处理：</p>
+      <div class="eq">
+        <svg viewBox="0 0 340 40"><text x="8" y="28" fill="#d8e2f0" font-size="15" font-style="italic">Δ = 2 n d cos θ<sub>t</sub></text></svg>
+        <svg viewBox="0 0 340 40"><text x="8" y="28" fill="#d8e2f0" font-size="15" font-style="italic">δ = 4π n d cos θ<sub>t</sub> / λ</text></svg>
+        <svg viewBox="0 0 360 40"><text x="8" y="28" fill="#d8e2f0" font-size="15" font-style="italic">R = 2r²(1−cosδ) / (1+r⁴−2r²cosδ)</text></svg>
+      </div>
+      <p>本实现以视线与表面法线夹角作为干涉入射角（改变观察角度会改变光程差）；光源方向用于亮度与明暗，这是对真实点光源反射分布的简化。</p><p>薄膜厚度场采用简化排液—扩散方程：</p>
+      <div class="eq">
+        <svg viewBox="0 0 380 40"><text x="8" y="28" fill="#d8e2f0" font-size="15" font-style="italic">∂h/∂t + ∇<sub>s</sub>·(h v<sub>g</sub>) = D Δ<sub>s</sub>h + 扰动</text></svg>
+      </div>
+      <p class="lim"><b>当前模型的局限：</b>① 质量—弹簧网格不是严格连续薄膜求解器，表面张力由弹簧刚度近似，未使用有限元/边界元；② 几何为单泡，未求解完整 Plateau 多泡问题（若加入多泡，其共享边界与 120° 交汇角只能作为近似，不宣称 Plateau 定律严格成立）；③ 厚度场在顶点上离散，采用一阶显式时间积分，底部液体会以“滴落”方式从网格中移除，破裂只是光学判据，不重构几何；④ 光学使用对称薄膜的多光束干涉近似（s/p 偏振平均），忽略吸收、散射、色散和实际黑膜中的复杂膜厚分布；⑤ 显式积分在高刚度下可能发散，程序设有自动暂停保护。</p>
+    </section>
+  </div>
+</div>
+<script>
+'use strict';
+(function(){
+const TAU = Math.PI * 2;
+const $ = function(id){ return document.getElementById(id); };
+const clamp = function(x, a, b){ return x < a ? a : (x > b ? b : x); };
+const lerp = function(a, b, t){ return a + (b - a) * t; };
+const smoothstep = function(a, b, x){ let t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+
+function mulberry32(seed){
+  let a = seed >>> 0;
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+function buildIcosphere(level){
+  const t = (1 + Math.sqrt(5)) / 2;
+  let verts = [
+    [-1,t,0],[1,t,0],[-1,-t,0],[1,-t,0],[0,-1,t],[0,1,t],[0,-1,-t],[0,1,-t],
+    [t,0,-1],[t,0,1],[-t,0,-1],[-t,0,1]
+  ].map(function(v){ let l = Math.hypot(v[0], v[1], v[2]); return [v[0]/l, v[1]/l, v[2]/l]; });
+  let faces = [
+    [0,11,5],[0,5,1],[0,1,7],[0,7,10],[0,10,11],
+    [1,5,9],[5,11,4],[11,10,2],[10,7,6],[7,1,8],
+    [3,9,4],[3,4,2],[3,2,6],[3,6,8],[3,8,9],
+    [4,9,5],[2,4,11],[6,2,10],[8,6,7],[9,8,1]
+  ];
+  const midCache = new Map();
+  function midpoint(a, b){
+    let key = a < b ? a + '_' + b : b + '_' + a;
+    if (midCache.has(key)) return midCache.get(key);
+    let v = [(verts[a][0]+verts[b][0])/2, (verts[a][1]+verts[b][1])/2, (verts[a][2]+verts[b][2])/2];
+    let l = Math.hypot(v[0], v[1], v[2]) || 1e-12;
+    v = [v[0]/l, v[1]/l, v[2]/l];
+    verts.push(v);
+    midCache.set(key, verts.length - 1);
+    return verts.length - 1;
+  }
+  for (let i = 0; i < level; i++){
+    let nf = [];
+    for (let f of faces){
+      let a = f[0], b = f[1], c = f[2];
+      let ab = midpoint(a, b), bc = midpoint(b, c), ca = midpoint(c, a);
+      nf.push([a, ab, ca], [b, bc, ab], [c, ca, bc], [ab, bc, ca]);
+    }
+    faces = nf;
+  }
+  return { verts: verts, faces: faces };
+}
+
+function buildTopology(verts, faces){
+  let N = verts.length;
+  let edges = [];
+  let edgeSet = new Set();
+  let neighbors = Array.from({length: N}, function(){ return []; });
+  for (let f of faces){
+    for (let k = 0; k < 3; k++){
+      let a = f[k], b = f[(k+1)%3];
+      let key = a < b ? a + '_' + b : b + '_' + a;
+      if (edgeSet.has(key) === false){
+        edgeSet.add(key);
+        edges.push([a, b]);
+        neighbors[a].push(b);
+        neighbors[b].push(a);
+      }
+    }
+  }
+  return { edges: edges, neighbors: neighbors };
+}
+
+const REST_FACTOR = 0.85;
+const BASE_VOL = 4.0 / 3.0 * Math.PI;
+
+function createSimulation(level, seed, volFactor, avgThickness){
+  const base = buildIcosphere(level);
+  const faces = base.faces;
+  const N = base.verts.length;
+  const pos = base.verts.map(function(v){ return [v[0], v[1], v[2]]; });
+  const vel = base.verts.map(function(){ return [0, 0, 0]; });
+  const topo = buildTopology(base.verts, faces);
+  const edges = topo.edges;
+  const neighbors = topo.neighbors;
+  const restLen = edges.map(function(e){
+    let a = e[0], b = e[1];
+    return Math.hypot(pos[a][0]-pos[b][0], pos[a][1]-pos[b][1], pos[a][2]-pos[b][2]) * REST_FACTOR;
+  });
+  // vertex control area for thickness normalization (approximate, constant)
+  let vertexArea = new Array(N).fill(0);
+  for (let f of faces){
+    let a = f[0], b = f[1], c = f[2];
+    let ux = pos[b][0]-pos[a][0], uy = pos[b][1]-pos[a][1], uz = pos[b][2]-pos[a][2];
+    let vx = pos[c][0]-pos[a][0], vy = pos[c][1]-pos[a][1], vz = pos[c][2]-pos[a][2];
+    let nx = uy*vz - uz*vy, ny = uz*vx - ux*vz, nz = ux*vy - uy*vx;
+    let area = 0.5 * Math.hypot(nx, ny, nz);
+    vertexArea[a] += area / 3; vertexArea[b] += area / 3; vertexArea[c] += area / 3;
+  }
+  const rng = mulberry32(seed);
+  const h = new Array(N);
+  for (let i = 0; i < N; i++){
+    h[i] = avgThickness * (1 + (rng() - 0.5) * 0.03);
+  }
+  const sim = {
+    level: level,
+    pos: pos,
+    vel: vel,
+    faces: faces,
+    edges: edges,
+    neighbors: neighbors,
+    restLen: restLen,
+    vertexArea: vertexArea,
+    N: N,
+    h: h,
+    faceN: [],
+    faceArea: [],
+    faceCenters: [],
+    vertexNormals: [],
+    volume: 0,
+    targetVol: volFactor * BASE_VOL,
+    prevVolume: BASE_VOL,
+    volIntegral: 0,
+    pressure: 0,
+    springEnergy: 0,
+    kineticEnergy: 0,
+    gamma: 0.03,
+    damping: 0.5,
+    gravityOn: true,
+    gravityStrength: 9.8,
+    drainSpeed: 0.006,
+    diffusion: 0.15,
+    perturbAmp: 1.2,
+    ruptureToggle: true,
+    ruptureThresh: 40,
+    avgThickness: avgThickness,
+    seed: seed,
+    rng: rng,
+    stepCount: 0
+  };
+  computeVolume(sim);
+  sim.prevVolume = sim.volume;
+  sim.volIntegral = 0;
+  return sim;
+}
+
+function computeVolume(sim){
+  const pos = sim.pos;
+  const faces = sim.faces;
+  let vol = 0;
+  sim.faceN.length = 0;
+  sim.faceArea.length = 0;
+  sim.faceCenters.length = 0;
+  for (let fi = 0; fi < faces.length; fi++){
+    let f = faces[fi];
+    let a = f[0], b = f[1], c = f[2];
+    let ax = pos[a][0], ay = pos[a][1], az = pos[a][2];
+    let bx = pos[b][0], by = pos[b][1], bz = pos[b][2];
+    let cx = pos[c][0], cy = pos[c][1], cz = pos[c][2];
+    let nx = (by-ay)*(cz-az) - (bz-az)*(cy-ay);
+    let ny = (bz-az)*(cx-ax) - (bx-ax)*(cz-az);
+    let nz = (bx-ax)*(cy-ay) - (by-ay)*(cx-ax);
+    vol += (ax*nx + ay*ny + az*nz) / 6;
+    sim.faceN.push([nx, ny, nz]);
+    sim.faceArea.push(0.5 * Math.hypot(nx, ny, nz));
+    sim.faceCenters.push([(ax+bx+cx)/3, (ay+by+cy)/3, (az+bz+cz)/3]);
+  }
+  sim.volume = vol;
+  return vol;
+}
+
+function computeVertexNormals(sim){
+  const N = sim.N;
+  const vn = sim.vertexNormals;
+  vn.length = 0;
+  for (let i = 0; i < N; i++) vn.push([0, 0, 0]);
+  for (let fi = 0; fi < sim.faces.length; fi++){
+    let f = sim.faces[fi];
+    let n = sim.faceN[fi];
+    // cross vector magnitude = 2 * area, area weighting is desirable
+    vn[f[0]][0] += n[0]; vn[f[0]][1] += n[1]; vn[f[0]][2] += n[2];
+    vn[f[1]][0] += n[0]; vn[f[1]][1] += n[1]; vn[f[1]][2] += n[2];
+    vn[f[2]][0] += n[0]; vn[f[2]][1] += n[1]; vn[f[2]][2] += n[2];
+  }
+  for (let i = 0; i < N; i++){
+    let x = vn[i][0], y = vn[i][1], z = vn[i][2];
+    let l = Math.hypot(x, y, z) || 1e-12;
+    vn[i][0] = x/l; vn[i][1] = y/l; vn[i][2] = z/l;
+  }
+}
+
+const MAX_SPEED = 12;
+const MAX_PRESSURE = 6;
+const KP = 5, KI = 30, KD = 1.0;
+
+function physicsSubstep(sim, dt){
+  computeVolume(sim);
+  const gamma = sim.gamma;
+  const targetVol = sim.targetVol;
+  const vol = sim.volume;
+  const R = Math.cbrt(3 * targetVol / (4 * Math.PI));
+  const err = targetVol - vol;
+  sim.volIntegral = clamp(sim.volIntegral + KI * err * dt, -MAX_PRESSURE, MAX_PRESSURE);
+  const volDot = (vol - sim.prevVolume) / dt;
+  sim.prevVolume = vol;
+  let P = 2 * gamma / R + KP * err + sim.volIntegral - KD * volDot;
+  P = clamp(P, 0, MAX_PRESSURE);
+  sim.pressure = P;
+
+  const pos = sim.pos;
+  const vel = sim.vel;
+  const N = sim.N;
+  const mass = 1 / N;
+  const F = new Array(N);
+  for (let i = 0; i < N; i++) F[i] = [0, 0, 0];
+
+  const kS = gamma * 3.8; // calibrated for this icosphere mesh
+  const edges = sim.edges;
+  const restLen = sim.restLen;
+  for (let ei = 0; ei < edges.length; ei++){
+    let a = edges[ei][0], b = edges[ei][1];
+    let dx = pos[b][0] - pos[a][0], dy = pos[b][1] - pos[a][1], dz = pos[b][2] - pos[a][2];
+    let l = Math.hypot(dx, dy, dz);
+    if (l < 1e-12) continue;
+    let f = kS * (l - restLen[ei]);
+    let fx = f * dx / l, fy = f * dy / l, fz = f * dz / l;
+    F[a][0] += fx; F[a][1] += fy; F[a][2] += fz;
+    F[b][0] -= fx; F[b][1] -= fy; F[b][2] -= fz;
+  }
+
+  const faces = sim.faces;
+  const faceN = sim.faceN;
+  for (let fi = 0; fi < faces.length; fi++){
+    let f = faces[fi];
+    let nx = faceN[fi][0], ny = faceN[fi][1], nz = faceN[fi][2];
+    let px = P * nx / 6, py = P * ny / 6, pz = P * nz / 6;
+    F[f[0]][0] += px; F[f[0]][1] += py; F[f[0]][2] += pz;
+    F[f[1]][0] += px; F[f[1]][1] += py; F[f[1]][2] += pz;
+    F[f[2]][0] += px; F[f[2]][1] += py; F[f[2]][2] += pz;
+  }
+
+  const g = sim.gravityOn ? sim.gravityStrength : 0;
+  const damp = sim.damping;
+  let maxV = 0;
+  let kinetic = 0;
+  for (let i = 0; i < N; i++){
+    let vx = vel[i][0], vy = vel[i][1], vz = vel[i][2];
+    F[i][0] += -damp * vx;
+    F[i][1] += -damp * vy - g * mass;
+    F[i][2] += -damp * vz;
+    let ax = F[i][0] / mass, ay = F[i][1] / mass, az = F[i][2] / mass;
+    vx += ax * dt; vy += ay * dt; vz += az * dt;
+    let sp = Math.hypot(vx, vy, vz);
+    if (sp > MAX_SPEED){
+      let s = MAX_SPEED / sp;
+      vx *= s; vy *= s; vz *= s; sp = MAX_SPEED;
+    }
+    vel[i][0] = vx; vel[i][1] = vy; vel[i][2] = vz;
+    pos[i][0] += vx * dt; pos[i][1] += vy * dt; pos[i][2] += vz * dt;
+    kinetic += sp * sp;
+    if (sp > maxV) maxV = sp;
+  }
+  sim.kineticEnergy = 0.5 * mass * kinetic;
+
+  // spring potential energy
+  let spring = 0;
+  for (let ei = 0; ei < edges.length; ei++){
+    let a = edges[ei][0], b = edges[ei][1];
+    let dx = pos[b][0] - pos[a][0], dy = pos[b][1] - pos[a][1], dz = pos[b][2] - pos[a][2];
+    let l = Math.hypot(dx, dy, dz);
+    let dl = l - restLen[ei];
+    spring += 0.5 * kS * dl * dl;
+  }
+  sim.springEnergy = spring;
+  sim.maxSpeed = maxV;
+}
+
+function updateThickness(sim, dt){
+  const pos = sim.pos;
+  const neighbors = sim.neighbors;
+  const N = sim.N;
+  const old = sim.h.slice();
+  const g = sim.gravityOn ? sim.gravityStrength : 0;
+  const gv = [0, -g, 0];
+  const R = Math.cbrt(3 * Math.max(sim.volume, 1e-6) / (4 * Math.PI));
+  const kDrain = sim.drainSpeed;
+  const D = sim.diffusion;
+  const amp = sim.perturbAmp;
+  const hMin = 0.5;
+  const hMax = Math.max(1000, sim.avgThickness * 5);
+  const rng = sim.rng;
+
+  for (let i = 0; i < N; i++){
+    let p = pos[i];
+    let n = sim.vertexNormals[i];
+    let gn = gv[0]*n[0] + gv[1]*n[1] + gv[2]*n[2];
+    let gt = [gv[0] - gn*n[0], gv[1] - gn*n[1], gv[2] - gn*n[2]];
+    let v = [kDrain * gt[0], kDrain * gt[1], kDrain * gt[2]];
+    let divv = -2 * gn / R * kDrain;
+    // upwind advection along surface tangent velocity
+    let best = -1, bestDot = 1e18, vlen = Math.hypot(v[0], v[1], v[2]);
+    if (vlen > 1e-9){
+      let nbs = neighbors[i];
+      for (let k = 0; k < nbs.length; k++){
+        let j = nbs[k];
+        let dx = pos[j][0] - p[0], dy = pos[j][1] - p[1], dz = pos[j][2] - p[2];
+        let dl = Math.hypot(dx, dy, dz) || 1e-9;
+        let d = (dx*v[0] + dy*v[1] + dz*v[2]) / dl;
+        if (d < bestDot){ bestDot = d; best = j; }
+      }
+    }
+    let adv = 0;
+    if (best >= 0){
+      let j = best;
+      let dx = pos[j][0] - p[0], dy = pos[j][1] - p[1], dz = pos[j][2] - p[2];
+      let dist = Math.hypot(dx, dy, dz) || 1e-6;
+      let c = Math.min(1, vlen * dt / dist);
+      adv = (old[j] - old[i]) * c;
+    }
+    let lap = 0;
+    let nbs = neighbors[i];
+    for (let k = 0; k < nbs.length; k++) lap += old[nbs[k]] - old[i];
+    lap /= (nbs.length || 1);
+    let noise = amp * (rng() - 0.5) * (dt / 0.016);
+    let hNew = old[i] + dt * (-old[i] * divv) + adv + dt * D * lap + noise;
+    sim.h[i] = clamp(hNew, hMin, hMax);
+  }
+}
+
+function applyInitialDeformation(sim, amount){
+  const rng = sim.rng;
+  for (let i = 0; i < sim.N; i++){
+    let l = Math.hypot(sim.pos[i][0], sim.pos[i][1], sim.pos[i][2]) || 1e-9;
+    let nx = sim.pos[i][0]/l, ny = sim.pos[i][1]/l, nz = sim.pos[i][2]/l;
+    let s = 1 + (rng() - 0.5) * amount;
+    sim.pos[i][0] *= s; sim.pos[i][1] *= s; sim.pos[i][2] *= s;
+  }
+  computeVolume(sim);
+  sim.prevVolume = sim.volume;
+}
+// ---------- 光学 ----------
+function wavelengthToRGB(wl){
+  let r = 0, g = 0, b = 0;
+  if (wl >= 380 && wl < 440){ r = -(wl - 440) / (440 - 380); g = 0; b = 1; }
+  else if (wl < 490){ r = 0; g = (wl - 440) / (490 - 440); b = 1; }
+  else if (wl < 510){ r = 0; g = 1; b = -(wl - 510) / (510 - 490); }
+  else if (wl < 580){ r = (wl - 510) / (580 - 510); g = 1; b = 0; }
+  else if (wl < 645){ r = 1; g = -(wl - 645) / (645 - 580); b = 0; }
+  else if (wl <= 700){ r = 1; g = 0; b = 0; }
+  let f;
+  if (wl < 420) f = 0.3 + 0.7 * (wl - 380) / (420 - 380);
+  else if (wl < 700) f = 1.0;
+  else f = 0.3 + 0.7 * (780 - wl) / (780 - 700);
+  return [r * f, g * f, b * f];
+}
+
+function filmReflectance(nFilm, dNm, cos0, wlNm){
+  const sin0 = Math.sqrt(Math.max(0, 1 - cos0 * cos0));
+  const sinT = sin0 / nFilm;
+  const cosT = Math.sqrt(Math.max(0, 1 - sinT * sinT));
+  const n0 = 1.0;
+  const rs = (n0 * cos0 - nFilm * cosT) / (n0 * cos0 + nFilm * cosT);
+  const rp = (nFilm * cos0 - n0 * cosT) / (nFilm * cos0 + n0 * cosT);
+  const Rs = rs * rs, Rp = rp * rp;
+  const delta = 4 * Math.PI * nFilm * dNm * cosT / wlNm;
+  const c = Math.cos(delta);
+  const denomS = Math.max(1 + Rs*Rs - 2*Rs*c, 1e-12);
+  const denomP = Math.max(1 + Rp*Rp - 2*Rp*c, 1e-12);
+  const R = 0.5 * ( (2*Rs*(1-c))/denomS + (2*Rp*(1-c))/denomP );
+  return R;
+}
+
+function reflectedRGB(nFilm, dNm, cos0, lightMode, monoWl){
+  if (lightMode === 'mono'){
+    const R = filmReflectance(nFilm, dNm, cos0, monoWl);
+    const rgb = wavelengthToRGB(monoWl);
+    return [rgb[0]*R, rgb[1]*R, rgb[2]*R];
+  }
+  let r = 0, g = 0, b = 0, cnt = 0;
+  for (let wl = 380; wl <= 700; wl += 5){
+    const R = filmReflectance(nFilm, dNm, cos0, wl);
+    const rgb = wavelengthToRGB(wl);
+    r += R * rgb[0]; g += R * rgb[1]; b += R * rgb[2];
+    cnt++;
+  }
+  return [r / cnt, g / cnt, b / cnt];
+}
+
+function luminance(rgb){ return 0.2126*rgb[0] + 0.7152*rgb[1] + 0.0722*rgb[2]; }
+
+function gammaEncode(c){ return c <= 0.0031308 ? 12.92*c : 1.055*Math.pow(c, 1/2.4) - 0.055; }
+
+function rgbCss(r, g, b, a){
+  r = clamp(gammaEncode(clamp(r, 0, 1)), 0, 1);
+  g = clamp(gammaEncode(clamp(g, 0, 1)), 0, 1);
+  b = clamp(gammaEncode(clamp(b, 0, 1)), 0, 1);
+  return 'rgba(' + Math.round(r*255) + ',' + Math.round(g*255) + ',' + Math.round(b*255) + ',' + a.toFixed(3) + ')';
+}
+
+function thicknessColor(h, hMax){
+  const t = clamp(h / hMax, 0, 1);
+  const stops = [
+    [0.0, [8, 22, 52]],
+    [0.2, [35, 80, 170]],
+    [0.45, [55, 190, 165]],
+    [0.7, [235, 210, 80]],
+    [0.9, [230, 110, 55]],
+    [1.0, [220, 40, 70]]
+  ];
+  for (let i = 0; i < stops.length - 1; i++){
+    let t0 = stops[i][0], t1 = stops[i+1][0];
+    if (t >= t0 && t <= t1){
+      let u = (t - t0) / (t1 - t0);
+      return [
+        lerp(stops[i][1][0], stops[i+1][1][0], u),
+        lerp(stops[i][1][1], stops[i+1][1][1], u),
+        lerp(stops[i][1][2], stops[i+1][1][2], u)
+      ];
+    }
+  }
+  return [220, 40, 70];
+}
+
+// ---------- 相机与渲染 ----------
+const view = { yaw: 40, pitch: 15, dist: 3.6 };
+const FOV = 30 * Math.PI / 180;
+
+function normalize(v){
+  let l = Math.hypot(v[0], v[1], v[2]) || 1e-12;
+  return [v[0]/l, v[1]/l, v[2]/l];
+}
+function cross(a, b){
+  return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+}
+function dot(a, b){ return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]; }
+
+function cameraBasis(center){
+  const yaw = view.yaw * Math.PI / 180;
+  const pitch = view.pitch * Math.PI / 180;
+  const cp = Math.cos(pitch);
+  const eye = [
+    center[0] + view.dist * cp * Math.sin(yaw),
+    center[1] + view.dist * Math.sin(pitch),
+    center[2] + view.dist * cp * Math.cos(yaw)
+  ];
+  const fwd = normalize([center[0]-eye[0], center[1]-eye[1], center[2]-eye[2]]);
+  let right = cross(fwd, [0, 1, 0]);
+  let rl = Math.hypot(right[0], right[1], right[2]);
+  if (rl < 1e-6) right = [1, 0, 0];
+  right = normalize(right);
+  const up = cross(right, fwd);
+  return { eye: eye, right: right, up: up, fwd: fwd };
+}
+
+function projectPoint(p, basis, f, W, H){
+  let dx = p[0] - basis.eye[0], dy = p[1] - basis.eye[1], dz = p[2] - basis.eye[2];
+  let zc = dot([dx,dy,dz], basis.fwd);
+  if (zc < 0.05) zc = 0.05;
+  let xc = dot([dx,dy,dz], basis.right);
+  let yc = dot([dx,dy,dz], basis.up);
+  return [W/2 + xc * f / zc, H/2 - yc * f / zc, zc];
+}
+
+function lightDirection(){
+  const az = parseFloat($('lightAzimuth').value) * Math.PI / 180;
+  const el = parseFloat($('lightElevation').value) * Math.PI / 180;
+  const ce = Math.cos(el);
+  return [ce * Math.cos(az), Math.sin(el), ce * Math.sin(az)];
+}
+
+function avgH(sim){
+  let s = 0;
+  for (let i = 0; i < sim.N; i++) s += sim.h[i];
+  return s / sim.N;
+}
+
+function computeCentroid(sim){
+  let cx = 0, cy = 0, cz = 0;
+  for (let i = 0; i < sim.N; i++){
+    cx += sim.pos[i][0]; cy += sim.pos[i][1]; cz += sim.pos[i][2];
+  }
+  sim.centroid = [cx/sim.N, cy/sim.N, cz/sim.N];
+}
+
+let sim = null;
+let faceScreen = [];
+let hoverFace = -1;
+const state = { paused: false, diverged: false, divReason: '', viewMode: 'optical', interaction: 'drag', lightMode: 'white', seed: 20250819 };
+
+function render(){
+  const canvas = $('cv');
+  const wrap = $('canvasWrap');
+  const W = wrap.clientWidth, H = wrap.clientHeight;
+  if (W < 10 || H < 10) return;
+  const dpr = window.devicePixelRatio || 1;
+  const pw = Math.round(W * dpr), ph = Math.round(H * dpr);
+  if (canvas.width !== pw || canvas.height !== ph){
+    canvas.width = pw; canvas.height = ph;
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  // dark background
+  const bg = ctx.createRadialGradient(W*0.5, H*0.5, 10, W*0.5, H*0.5, Math.max(W,H)*0.7);
+  bg.addColorStop(0, '#0d1522');
+  bg.addColorStop(1, '#070a10');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  if (sim === null) return;
+  if (state.diverged){
+    ctx.fillStyle = '#ff5d5d';
+    ctx.font = '16px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('模拟已自动暂停：' + state.divReason, W/2, H/2 - 10);
+    ctx.font = '13px sans-serif';
+    ctx.fillStyle = '#8fa0b8';
+    ctx.fillText('请检查参数后点击“重置”。', W/2, H/2 + 16);
+    return;
+  }
+
+  const basis = cameraBasis(sim.centroid);
+  const f = 0.5 * H / Math.tan(FOV / 2);
+  const proj = new Array(sim.N);
+  for (let i = 0; i < sim.N; i++){
+    proj[i] = projectPoint(sim.pos[i], basis, f, W, H);
+  }
+
+  const viewMode = state.viewMode;
+  const lightMode = $('lightMode').value;
+  const nFilm = parseFloat($('refractiveIndex').value);
+  const monoWl = parseFloat($('monoWavelength').value);
+  const ambient = parseFloat($('ambient').value);
+  const interferenceOn = $('interference').checked;
+  const lightDir = lightDirection();
+  const ruptureToggle = sim.ruptureToggle;
+  const ruptureThresh = sim.ruptureThresh;
+
+  const order = [];
+  faceScreen.length = 0;
+  for (let fi = 0; fi < sim.faces.length; fi++){
+    let f = sim.faces[fi];
+    let z = (proj[f[0]][2] + proj[f[1]][2] + proj[f[2]][2]) / 3;
+    let x = (proj[f[0]][0] + proj[f[1]][0] + proj[f[2]][0]) / 3;
+    let y = (proj[f[0]][1] + proj[f[1]][1] + proj[f[2]][1]) / 3;
+    faceScreen.push([x, y, z]);
+    order.push({ fi: fi, z: z });
+  }
+  order.sort(function(a, b){ return b.z - a.z; });
+  const doStroke = sim.level <= 3;
+
+  if (viewMode === 'geometry'){
+    for (let oi = 0; oi < order.length; oi++){
+      let fi = order[oi].fi;
+      let f = sim.faces[fi];
+      let n = normalize(sim.faceN[fi]);
+      let shade = 0.55 + 0.45 * Math.max(0, dot(n, lightDir));
+      let r = 0.12 + 0.10*shade, g = 0.20 + 0.16*shade, b = 0.32 + 0.22*shade;
+      ctx.fillStyle = rgbCss(r, g, b, 0.55);
+      if (doStroke){ ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.6; }
+      ctx.beginPath();
+      ctx.moveTo(proj[f[0]][0], proj[f[0]][1]);
+      ctx.lineTo(proj[f[1]][0], proj[f[1]][1]);
+      ctx.lineTo(proj[f[2]][0], proj[f[2]][1]);
+      ctx.closePath();
+      ctx.fill();
+      if (doStroke) ctx.stroke();
+    }
+  } else if (viewMode === 'thickness'){
+    let hMax = 50;
+    for (let i = 0; i < sim.N; i++) hMax = Math.max(hMax, sim.h[i]);
+    hMax = Math.max(200, hMax * 1.05);
+    for (let oi = 0; oi < order.length; oi++){
+      let fi = order[oi].fi;
+      let f = sim.faces[fi];
+      let hFace = (sim.h[f[0]] + sim.h[f[1]] + sim.h[f[2]]) / 3;
+      let c = thicknessColor(hFace, hMax);
+      ctx.fillStyle = rgbCss(c[0]/255, c[1]/255, c[2]/255, 0.92);
+      if (doStroke){ ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.6; }
+      ctx.beginPath();
+      ctx.moveTo(proj[f[0]][0], proj[f[0]][1]);
+      ctx.lineTo(proj[f[1]][0], proj[f[1]][1]);
+      ctx.lineTo(proj[f[2]][0], proj[f[2]][1]);
+      ctx.closePath();
+      ctx.fill();
+      if (doStroke) ctx.stroke();
+    }
+  } else {
+    // 光学视图
+    for (let oi = 0; oi < order.length; oi++){
+      let fi = order[oi].fi;
+      let f = sim.faces[fi];
+      let hFace = (sim.h[f[0]] + sim.h[f[1]] + sim.h[f[2]]) / 3;
+      if (ruptureToggle && hFace < ruptureThresh){
+        ctx.fillStyle = 'rgba(4,6,10,0.65)';
+        if (doStroke){ ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.6; }
+        ctx.beginPath();
+        ctx.moveTo(proj[f[0]][0], proj[f[0]][1]);
+        ctx.lineTo(proj[f[1]][0], proj[f[1]][1]);
+        ctx.lineTo(proj[f[2]][0], proj[f[2]][1]);
+        ctx.closePath();
+        ctx.fill();
+        if (doStroke) ctx.stroke();
+        continue;
+      }
+      let n = normalize(sim.faceN[fi]);
+      let center = sim.faceCenters[fi];
+      let viewDir = normalize([basis.eye[0]-center[0], basis.eye[1]-center[1], basis.eye[2]-center[2]]);
+      let cos0 = clamp(Math.abs(dot(n, viewDir)), 0.0001, 1);
+      let diffuse = Math.max(0, dot(n, lightDir)) * 0.75 + Math.abs(dot(n, lightDir)) * 0.25;
+      let rim = Math.pow(1 - clamp(Math.abs(dot(n, viewDir)), 0, 1), 2);
+      let refl = reflectedRGB(nFilm, hFace, cos0, lightMode, monoWl);
+      let lum = luminance(refl);
+      let scale = 15;
+      let r, g, b, a;
+      if (interferenceOn){
+        r = ambient * 0.22 + refl[0] * scale * (0.35 + 0.65 * diffuse) + rim * 0.08;
+        g = ambient * 0.24 + refl[1] * scale * (0.35 + 0.65 * diffuse) + rim * 0.08;
+        b = ambient * 0.28 + refl[2] * scale * (0.35 + 0.65 * diffuse) + rim * 0.10;
+        a = clamp(0.18 + lum * scale * 0.85 + rim * 0.25, 0.12, 0.95);
+      } else {
+        r = 0.72 + 0.18 * diffuse + rim * 0.10;
+        g = 0.80 + 0.14 * diffuse + rim * 0.10;
+        b = 0.92 + 0.06 * diffuse + rim * 0.10;
+        a = clamp(0.10 + 0.10 * diffuse + 0.20 * rim, 0.08, 0.55);
+      }
+      ctx.fillStyle = rgbCss(r, g, b, a);
+      if (doStroke){ ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.6; }
+      ctx.beginPath();
+      ctx.moveTo(proj[f[0]][0], proj[f[0]][1]);
+      ctx.lineTo(proj[f[1]][0], proj[f[1]][1]);
+      ctx.lineTo(proj[f[2]][0], proj[f[2]][1]);
+      ctx.closePath();
+      ctx.fill();
+      if (doStroke) ctx.stroke();
+    }
+  }
+
+  drawSpectrum(nFilm, lightMode, monoWl);
+}
+
+function drawSpectrum(nFilm, lightMode, monoWl){
+  const canvas = $('spectrumCanvas');
+  if (canvas === null) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#0a0e15';
+  ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = '#1e2a3a';
+  ctx.strokeRect(0.5, 0.5, W-1, H-1);
+  if (hoverFace < 0 || hoverFace >= sim.faces.length){
+    ctx.fillStyle = '#5d7088';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('悬停表面查看局部光谱', W/2, H/2 + 4);
+    $('specLabel').textContent = '悬停表面查看局部膜厚与反射光谱';
+    return;
+  }
+  let f = sim.faces[hoverFace];
+  let hFace = (sim.h[f[0]] + sim.h[f[1]] + sim.h[f[2]]) / 3;
+  let center = sim.faceCenters[hoverFace];
+  const basis = cameraBasis(sim.centroid);
+  let viewDir = normalize([basis.eye[0]-center[0], basis.eye[1]-center[1], basis.eye[2]-center[2]]);
+  let n = normalize(sim.faceN[hoverFace]);
+  let cos0 = clamp(Math.abs(dot(n, viewDir)), 0.0001, 1);
+  // axis
+  ctx.strokeStyle = '#243249';
+  ctx.beginPath(); ctx.moveTo(10, H-16); ctx.lineTo(W-8, H-16); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(10, H-16); ctx.lineTo(10, 8); ctx.stroke();
+  // spectrum curve
+  const maxR = 0.12;
+  ctx.beginPath();
+  for (let x = 0; x <= W - 20; x++){
+    let wl = 380 + (700 - 380) * x / (W - 20);
+    let R = filmReflectance(nFilm, hFace, cos0, wl);
+    let y = (H - 16) - (R / maxR) * (H - 28);
+    if (x === 0) ctx.moveTo(10 + x, y); else ctx.lineTo(10 + x, y);
+  }
+  ctx.strokeStyle = '#7fd4ff';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  if (lightMode === 'mono'){
+    let x = 10 + (monoWl - 380) / (700 - 380) * (W - 20);
+    ctx.strokeStyle = '#f5b84c';
+    ctx.beginPath(); ctx.moveTo(x, 8); ctx.lineTo(x, H-16); ctx.stroke();
+  }
+  ctx.fillStyle = '#8fa0b8';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('380', 10, H-4);
+  ctx.textAlign = 'right';
+  ctx.fillText('700 nm', W-6, H-4);
+  $('specLabel').textContent = '局部膜厚 h = ' + hFace.toFixed(0) + ' nm，视线角 θ = ' + (Math.acos(cos0)*180/Math.PI).toFixed(0) + '°';
+}
+
+// ---------- 交互 ----------
+function canvasPos(e){
+  const rect = $('cv').getBoundingClientRect();
+  return [e.clientX - rect.left, e.clientY - rect.top];
+}
+
+function findNearestVertex(px, py, maxDist){
+  if (sim === null) return -1;
+  const basis = cameraBasis(sim.centroid);
+  const W = $('canvasWrap').clientWidth, H = $('canvasWrap').clientHeight;
+  const f = 0.5 * H / Math.tan(FOV / 2);
+  let best = -1, bestD = maxDist * maxDist;
+  for (let i = 0; i < sim.N; i++){
+    let p = projectPoint(sim.pos[i], basis, f, W, H);
+    let dx = p[0] - px, dy = p[1] - py;
+    let d = dx*dx + dy*dy;
+    if (d < bestD){ bestD = d; best = i; }
+  }
+  return best;
+}
+
+function findNearestFace(px, py, maxDist){
+  if (sim === null || faceScreen.length === 0) return -1;
+  let best = -1, bestD = maxDist * maxDist;
+  for (let fi = 0; fi < faceScreen.length; fi++){
+    let p = faceScreen[fi];
+    let dx = p[0] - px, dy = p[1] - py;
+    let d = dx*dx + dy*dy;
+    if (d < bestD){ bestD = d; best = fi; }
+  }
+  return best;
+}
+
+function moveVertexToMouse(vi, px, py){
+  const basis = cameraBasis(sim.centroid);
+  const W = $('canvasWrap').clientWidth, H = $('canvasWrap').clientHeight;
+  const f = 0.5 * H / Math.tan(FOV / 2);
+  let p = sim.pos[vi];
+  let dx = p[0] - basis.eye[0], dy = p[1] - basis.eye[1], dz = p[2] - basis.eye[2];
+  let zc = Math.max(0.05, dot([dx,dy,dz], basis.fwd));
+  let xc = (px - W/2) * zc / f;
+  let yc = (H/2 - py) * zc / f;
+  sim.pos[vi][0] = basis.eye[0] + basis.right[0]*xc + basis.up[0]*yc + basis.fwd[0]*zc;
+  sim.pos[vi][1] = basis.eye[1] + basis.right[1]*xc + basis.up[1]*yc + basis.fwd[1]*zc;
+  sim.pos[vi][2] = basis.eye[2] + basis.right[2]*xc + basis.up[2]*yc + basis.fwd[2]*zc;
+  sim.vel[vi][0] = 0; sim.vel[vi][1] = 0; sim.vel[vi][2] = 0;
+  computeVolume(sim);
+  sim.prevVolume = sim.volume;
+  computeVertexNormals(sim);
+}
+
+function applyPoke(vi){
+  let n = sim.vertexNormals[vi];
+  let depth = 0.16;
+  let str = 2.2;
+  let nb = sim.neighbors[vi];
+  sim.pos[vi][0] -= n[0] * depth; sim.pos[vi][1] -= n[1] * depth; sim.pos[vi][2] -= n[2] * depth;
+  sim.vel[vi][0] -= n[0] * str; sim.vel[vi][1] -= n[1] * str; sim.vel[vi][2] -= n[2] * str;
+  for (let k = 0; k < nb.length; k++){
+    let j = nb[k];
+    let w = 0.45;
+    sim.pos[j][0] -= n[0] * depth * w; sim.pos[j][1] -= n[1] * depth * w; sim.pos[j][2] -= n[2] * depth * w;
+    sim.vel[j][0] -= n[0] * str * w; sim.vel[j][1] -= n[1] * str * w; sim.vel[j][2] -= n[2] * str * w;
+  }
+  computeVolume(sim);
+  sim.prevVolume = sim.volume;
+  computeVertexNormals(sim);
+}
+
+function applyBlowAt(vi){
+  let n = sim.vertexNormals[vi];
+  let depth = 0.14;
+  let str = 2.0;
+  let nb = sim.neighbors[vi];
+  sim.pos[vi][0] += n[0] * depth; sim.pos[vi][1] += n[1] * depth; sim.pos[vi][2] += n[2] * depth;
+  sim.vel[vi][0] += n[0] * str; sim.vel[vi][1] += n[1] * str; sim.vel[vi][2] += n[2] * str;
+  for (let k = 0; k < nb.length; k++){
+    let j = nb[k];
+    let w = 0.4;
+    sim.pos[j][0] += n[0] * depth * w; sim.pos[j][1] += n[1] * depth * w; sim.pos[j][2] += n[2] * depth * w;
+    sim.vel[j][0] += n[0] * str * w; sim.vel[j][1] += n[1] * str * w; sim.vel[j][2] += n[2] * str * w;
+  }
+  computeVolume(sim);
+  sim.prevVolume = sim.volume;
+  computeVertexNormals(sim);
+  sim.targetVol = clamp(sim.targetVol * 1.04, 0.3 * BASE_VOL, 3.5 * BASE_VOL);
+  $('volTarget').value = (sim.targetVol / BASE_VOL).toFixed(3);
+  $('volTargetVal').textContent = (sim.targetVol / BASE_VOL).toFixed(2);
+}
+
+let dragVert = -1;
+let orbitDrag = false;
+let lastX = 0, lastY = 0;
+
+function setupInteraction(){
+  const canvas = $('cv');
+  canvas.addEventListener('pointerdown', function(e){
+    e.preventDefault();
+    canvas.setPointerCapture(e.pointerId);
+    const pos = canvasPos(e);
+    lastX = pos[0]; lastY = pos[1];
+    const vi = findNearestVertex(pos[0], pos[1], 22);
+    if (state.interaction === 'drag'){
+      if (vi >= 0){
+        dragVert = vi;
+      } else {
+        orbitDrag = true;
+      }
+    } else if (state.interaction === 'poke'){
+      if (vi >= 0){ applyPoke(vi); } else { orbitDrag = true; }
+    } else if (state.interaction === 'blow'){
+      if (vi >= 0){ applyBlowAt(vi); } else { orbitDrag = true; }
+    }
+  });
+  canvas.addEventListener('pointermove', function(e){
+    const pos = canvasPos(e);
+    if (dragVert >= 0){
+      moveVertexToMouse(dragVert, pos[0], pos[1]);
+    } else if (orbitDrag){
+      let dx = pos[0] - lastX, dy = pos[1] - lastY;
+      view.yaw = clamp(view.yaw + dx * 0.5, -180, 180);
+      view.pitch = clamp(view.pitch - dy * 0.3, -60, 60);
+      $('camYaw').value = view.yaw.toFixed(0);
+      $('camPitch').value = view.pitch.toFixed(0);
+      $('camYawVal').textContent = view.yaw.toFixed(0);
+      $('camPitchVal').textContent = view.pitch.toFixed(0);
+    }
+    lastX = pos[0]; lastY = pos[1];
+    hoverFace = findNearestFace(pos[0], pos[1], 45);
+  });
+  canvas.addEventListener('pointerup', function(e){
+    dragVert = -1; orbitDrag = false;
+    try{ canvas.releasePointerCapture(e.pointerId); } catch(err){}
+  });
+  canvas.addEventListener('pointercancel', function(e){
+    dragVert = -1; orbitDrag = false;
+  });
+}
+
+// ---------- 模拟推进 ----------
+const SUB_DT = 0.004;
+const SUBSTEPS = 4;
+const FRAME_DT = 0.016;
+
+function subParamsFor(sim){
+  if (sim.level >= 5) return { dt: 0.00025, n: 64 };
+  if (sim.level >= 4) return { dt: 0.001, n: 16 };
+  return { dt: SUB_DT, n: SUBSTEPS };
+}
+
+function syncUIParams(){
+  if (sim === null) return;
+  sim.gamma = clamp(parseFloat($('gamma').value), 0.002, 0.2);
+  sim.gravityOn = $('gravityToggle').checked;
+  sim.gravityStrength = clamp(parseFloat($('gravityStr').value), 0, 30);
+  sim.damping = clamp(parseFloat($('damping').value), 0, 2);
+  sim.targetVol = clamp(parseFloat($('volTarget').value), 0.3, 3.5) * BASE_VOL;
+  sim.drainSpeed = clamp(parseFloat($('drainSpeed').value), 0, 0.05);
+  sim.diffusion = clamp(parseFloat($('diffusion').value), 0, 1);
+  sim.perturbAmp = clamp(parseFloat($('perturbAmp').value), 0, 8);
+  sim.ruptureToggle = $('ruptureToggle').checked;
+  sim.ruptureThresh = clamp(parseFloat($('ruptureThresh').value), 5, 120);
+}
+
+function advanceFrame(){
+  if (sim === null) return;
+  syncUIParams();
+  const sp = subParamsFor(sim);
+  for (let s = 0; s < sp.n; s++) physicsSubstep(sim, sp.dt);
+  computeVertexNormals(sim);
+  updateThickness(sim, FRAME_DT);
+  computeCentroid(sim);
+  sim.stepCount++;
+  checkDivergence();
+}
+
+function checkDivergence(){
+  if (sim === null) return;
+  let reason = '';
+  for (let i = 0; i < sim.N; i++){
+    let p = sim.pos[i], v = sim.vel[i];
+    if (Number.isFinite(p[0]) === false || Number.isFinite(p[1]) === false || Number.isFinite(p[2]) === false ||
+        Number.isFinite(v[0]) === false || Number.isFinite(v[1]) === false || Number.isFinite(v[2]) === false){
+      reason = '数值发散：出现非有限数（NaN/Inf）。';
+      break;
+    }
+  }
+  if (reason === '' && sim.maxSpeed > MAX_SPEED * 1.4) reason = '数值发散：顶点速度超过安全阈值（' + sim.maxSpeed.toFixed(1) + ' m/s）。';
+  if (reason === '' && sim.kineticEnergy > 500) reason = '数值发散：网格动能过大（' + sim.kineticEnergy.toFixed(0) + ' J）。';
+  if (reason === '' && sim.springEnergy > 2000) reason = '数值发散：网格弹性能过大（' + sim.springEnergy.toFixed(0) + ' J）。';
+  if (reason === ''){
+    const errRatio = Math.abs(sim.volume - sim.targetVol) / Math.max(sim.targetVol, 1e-9);
+    if (errRatio > 1.5 && sim.kineticEnergy > 50) reason = '数值发散：体积约束误差 ' + (errRatio*100).toFixed(0) + '% 且动能过高。';
+  }
+  if (reason !== ''){
+    state.diverged = true;
+    state.paused = true;
+    state.divReason = reason;
+    $('statusBadge').textContent = '已暂停：发散';
+    $('statusBadge').className = 'diverged';
+    $('msgBox').textContent = reason + ' 请检查参数（表面张力过小、目标体积过大或时间步长不适），然后点击重置。';
+  }
+}
+
+function resetSimulation(){
+  if (sim === null) return;
+  const level = parseInt($('meshLevel').value, 10);
+  const avgTh = parseFloat($('avgThick').value);
+  const volFactor = parseFloat($('volTarget').value);
+  sim = createSimulation(level, state.seed, volFactor, avgTh);
+  computeVertexNormals(sim);
+  computeCentroid(sim);
+  state.paused = false;
+  state.diverged = false;
+  state.divReason = '';
+  $('statusBadge').textContent = '运行中';
+  $('statusBadge').className = '';
+  $('msgBox').textContent = '已重置为球形泡，参数已应用。';
+}
+
+// ---------- UI 绑定 ----------
+function bindRange(id, valId, fmt){
+  const input = $(id);
+  const fmtFn = fmt || function(x){ return x; };
+  input.addEventListener('input', function(){
+    $(valId).textContent = fmtFn(parseFloat(input.value));
+  });
+}
+
+function setupUI(){
+  bindRange('gamma', 'gammaVal', function(x){ return x.toFixed(3); });
+  bindRange('gravityStr', 'gravityStrVal', function(x){ return x.toFixed(1); });
+  bindRange('damping', 'dampingVal', function(x){ return x.toFixed(2); });
+  bindRange('volTarget', 'volTargetVal', function(x){ return x.toFixed(2); });
+  bindRange('avgThick', 'avgThickVal', function(x){ return x.toFixed(0); });
+  bindRange('drainSpeed', 'drainSpeedVal', function(x){ return x.toFixed(4); });
+  bindRange('diffusion', 'diffusionVal', function(x){ return x.toFixed(2); });
+  bindRange('perturbAmp', 'perturbAmpVal', function(x){ return x.toFixed(1); });
+  bindRange('ruptureThresh', 'ruptureThreshVal', function(x){ return x.toFixed(0); });
+  bindRange('monoWavelength', 'monoWavelengthVal', function(x){ return x.toFixed(0); });
+  bindRange('refractiveIndex', 'refractiveIndexVal', function(x){ return x.toFixed(2); });
+  bindRange('lightAzimuth', 'lightAzimuthVal', function(x){ return x.toFixed(0); });
+  bindRange('lightElevation', 'lightElevationVal', function(x){ return x.toFixed(0); });
+  bindRange('camYaw', 'camYawVal', function(x){ return x.toFixed(0); });
+  bindRange('camPitch', 'camPitchVal', function(x){ return x.toFixed(0); });
+  bindRange('ambient', 'ambientVal', function(x){ return x.toFixed(2); });
+
+  $('avgThick').addEventListener('input', function(){
+    const newAvg = parseFloat(this.value);
+    if (sim !== null){
+      const cur = avgH(sim);
+      if (cur > 1e-6){
+        const s = newAvg / cur;
+        for (let i = 0; i < sim.N; i++) sim.h[i] = clamp(sim.h[i] * s, 0.5, Math.max(1000, newAvg * 5));
+      }
+      sim.avgThickness = newAvg;
+    }
+    $('avgThickVal').textContent = newAvg.toFixed(0);
+  });
+
+  $('camYaw').addEventListener('input', function(){ view.yaw = parseFloat(this.value); });
+  $('camPitch').addEventListener('input', function(){ view.pitch = parseFloat(this.value); });
+
+  $('btnPause').addEventListener('click', togglePause);
+  $('btnPause2').addEventListener('click', togglePause);
+  $('btnStep').addEventListener('click', stepOnce);
+  $('btnStep2').addEventListener('click', stepOnce);
+  $('btnReset').addEventListener('click', function(){ resetSimulation(); });
+  $('btnReset2').addEventListener('click', function(){ resetSimulation(); });
+
+  $('btnFullscreen').addEventListener('click', function(){
+    if (document.fullscreenElement === null || document.fullscreenElement === undefined){
+      const el = document.documentElement;
+      if (el.requestFullscreen) el.requestFullscreen();
+      else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    } else {
+      if (document.exitFullscreen) document.exitFullscreen();
+      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+    }
+  });
+
+  $('btnSeed').addEventListener('click', function(){
+    state.seed = parseInt($('seed').value, 10) >>> 0;
+    resetSimulation();
+    $('msgBox').textContent = '已应用随机种子 ' + state.seed + ' 并重置。';
+  });
+
+  $('btnPreset').addEventListener('click', function(){
+    applyPreset($('preset').value);
+  });
+
+  $('viewOptical').addEventListener('click', function(){ setViewMode('optical'); });
+  $('viewThickness').addEventListener('click', function(){ setViewMode('thickness'); });
+  $('viewGeometry').addEventListener('click', function(){ setViewMode('geometry'); });
+
+  $('modeDrag').addEventListener('click', function(){ setInteraction('drag'); });
+  $('modePoke').addEventListener('click', function(){ setInteraction('poke'); });
+  $('modeBlow').addEventListener('click', function(){ setInteraction('blow'); });
+
+  $('btnBlowPlus').addEventListener('click', function(){
+    if (sim === null) return;
+    sim.targetVol = clamp(sim.targetVol * 1.08, 0.3 * BASE_VOL, 3.5 * BASE_VOL);
+    $('volTarget').value = (sim.targetVol / BASE_VOL).toFixed(3);
+    $('volTargetVal').textContent = (sim.targetVol / BASE_VOL).toFixed(2);
+  });
+  $('btnBlowMinus').addEventListener('click', function(){
+    if (sim === null) return;
+    sim.targetVol = clamp(sim.targetVol / 1.08, 0.3 * BASE_VOL, 3.5 * BASE_VOL);
+    $('volTarget').value = (sim.targetVol / BASE_VOL).toFixed(3);
+    $('volTargetVal').textContent = (sim.targetVol / BASE_VOL).toFixed(2);
+  });
+
+  $('meshLevel').addEventListener('change', function(){ resetSimulation(); });
+
+  $('lightMode').addEventListener('change', function(){ state.lightMode = this.value; });
+}
+
+function setViewMode(mode){
+  state.viewMode = mode;
+  $('viewOptical').className = mode === 'optical' ? 'active' : '';
+  $('viewThickness').className = mode === 'thickness' ? 'active' : '';
+  $('viewGeometry').className = mode === 'geometry' ? 'active' : '';
+}
+
+function setInteraction(mode){
+  state.interaction = mode;
+  $('modeDrag').className = mode === 'drag' ? 'active' : '';
+  $('modePoke').className = mode === 'poke' ? 'active' : '';
+  $('modeBlow').className = mode === 'blow' ? 'active' : '';
+}
+
+function togglePause(){
+  if (state.diverged) return;
+  state.paused = state.paused === false;
+  const t = state.paused ? '已暂停' : '运行中';
+  $('statusBadge').textContent = t;
+  $('statusBadge').className = state.paused ? 'paused' : '';
+  $('msgBox').textContent = state.paused ? '已暂停。点击“暂停 / 继续”或“单步执行”。' : '继续运行。';
+}
+
+function stepOnce(){
+  if (state.diverged){ return; }
+  state.paused = true;
+  $('statusBadge').textContent = '已暂停（单步）';
+  $('statusBadge').className = 'paused';
+  advanceFrame();
+}
+
+function applyPreset(id){
+  const p = PRESETS[id];
+  if (p === undefined) return;
+  const set = function(id, val){ $(id).value = val; };
+  set('gamma', p.gamma !== undefined ? p.gamma : 0.03);
+  set('gravityToggle', p.gravityOn !== undefined ? p.gravityOn : true);
+  set('gravityStr', p.gravity !== undefined ? p.gravity : 9.8);
+  set('damping', p.damping !== undefined ? p.damping : 0.5);
+  set('volTarget', p.volFactor !== undefined ? p.volFactor : 1.0);
+  set('avgThick', p.avgThick !== undefined ? p.avgThick : 500);
+  set('drainSpeed', p.drainSpeed !== undefined ? p.drainSpeed : 0.006);
+  set('diffusion', p.diffusion !== undefined ? p.diffusion : 0.15);
+  set('perturbAmp', p.perturbAmp !== undefined ? p.perturbAmp : 1.2);
+  set('ruptureToggle', p.ruptureToggle !== undefined ? p.ruptureToggle : true);
+  set('ruptureThresh', p.ruptureThresh !== undefined ? p.ruptureThresh : 40);
+  set('lightMode', p.lightMode !== undefined ? p.lightMode : 'white');
+  set('monoWavelength', p.monoWavelength !== undefined ? p.monoWavelength : 532);
+  set('refractiveIndex', p.refractiveIndex !== undefined ? p.refractiveIndex : 1.33);
+  set('lightAzimuth', p.lightAzimuth !== undefined ? p.lightAzimuth : 35);
+  set('lightElevation', p.lightElevation !== undefined ? p.lightElevation : 25);
+  set('ambient', p.ambient !== undefined ? p.ambient : 0.18);
+  set('camYaw', p.camYaw !== undefined ? p.camYaw : 40);
+  set('camPitch', p.camPitch !== undefined ? p.camPitch : 15);
+  set('interference', p.interference !== undefined ? p.interference : true);
+  view.yaw = parseFloat($('camYaw').value);
+  view.pitch = parseFloat($('camPitch').value);
+  setViewMode(p.view !== undefined ? p.view : 'optical');
+  // update labels
+  $('gammaVal').textContent = parseFloat($('gamma').value).toFixed(3);
+  $('gravityStrVal').textContent = parseFloat($('gravityStr').value).toFixed(1);
+  $('dampingVal').textContent = parseFloat($('damping').value).toFixed(2);
+  $('volTargetVal').textContent = parseFloat($('volTarget').value).toFixed(2);
+  $('avgThickVal').textContent = parseFloat($('avgThick').value).toFixed(0);
+  $('drainSpeedVal').textContent = parseFloat($('drainSpeed').value).toFixed(4);
+  $('diffusionVal').textContent = parseFloat($('diffusion').value).toFixed(2);
+  $('perturbAmpVal').textContent = parseFloat($('perturbAmp').value).toFixed(1);
+  $('ruptureThreshVal').textContent = parseFloat($('ruptureThresh').value).toFixed(0);
+  $('monoWavelengthVal').textContent = parseFloat($('monoWavelength').value).toFixed(0);
+  $('refractiveIndexVal').textContent = parseFloat($('refractiveIndex').value).toFixed(2);
+  $('lightAzimuthVal').textContent = parseFloat($('lightAzimuth').value).toFixed(0);
+  $('lightElevationVal').textContent = parseFloat($('lightElevation').value).toFixed(0);
+  $('camYawVal').textContent = parseFloat($('camYaw').value).toFixed(0);
+  $('camPitchVal').textContent = parseFloat($('camPitch').value).toFixed(0);
+  $('ambientVal').textContent = parseFloat($('ambient').value).toFixed(2);
+  state.lightMode = $('lightMode').value;
+
+  const level = parseInt($('meshLevel').value, 10);
+  sim = createSimulation(level, state.seed, parseFloat($('volTarget').value), parseFloat($('avgThick').value));
+  if (p.deform !== undefined){
+    applyInitialDeformation(sim, p.deform);
+  }
+  computeVertexNormals(sim);
+  computeCentroid(sim);
+  state.paused = false;
+  state.diverged = false;
+  state.divReason = '';
+  $('statusBadge').textContent = '运行中';
+  $('statusBadge').className = '';
+  $('msgBox').textContent = '已应用预置场景：' + $('preset').selectedOptions[0].textContent + '。';
+}
+const PRESETS = {
+  sphere: {
+    gamma: 0.03, gravityOn: false, gravity: 0, damping: 0.5, volFactor: 1.0,
+    avgThick: 500, drainSpeed: 0, diffusion: 0.15, perturbAmp: 0.4,
+    ruptureToggle: true, ruptureThresh: 40, lightMode: 'white', monoWavelength: 532,
+    refractiveIndex: 1.33, lightAzimuth: 35, lightElevation: 25, ambient: 0.18,
+    camYaw: 40, camPitch: 15, interference: true, view: 'optical'
+  },
+  drain: {
+    gamma: 0.03, gravityOn: true, gravity: 9.8, damping: 0.5, volFactor: 1.0,
+    avgThick: 650, drainSpeed: 0.012, diffusion: 0.20, perturbAmp: 1.0,
+    ruptureToggle: true, ruptureThresh: 40, lightMode: 'white', monoWavelength: 532,
+    refractiveIndex: 1.33, lightAzimuth: 35, lightElevation: 25, ambient: 0.18,
+    camYaw: 40, camPitch: 15, interference: true, view: 'thickness'
+  },
+  blow: {
+    gamma: 0.03, gravityOn: false, gravity: 0, damping: 0.55, volFactor: 1.8,
+    avgThick: 420, drainSpeed: 0.002, diffusion: 0.15, perturbAmp: 0.6,
+    ruptureToggle: true, ruptureThresh: 40, lightMode: 'white', monoWavelength: 532,
+    refractiveIndex: 1.33, lightAzimuth: 35, lightElevation: 25, ambient: 0.18,
+    camYaw: 40, camPitch: 15, interference: true, view: 'optical'
+  },
+  lowgamma: {
+    gamma: 0.008, gravityOn: true, gravity: 4, damping: 0.25, volFactor: 1.25,
+    avgThick: 550, drainSpeed: 0.004, diffusion: 0.15, perturbAmp: 0.8,
+    ruptureToggle: true, ruptureThresh: 40, lightMode: 'white', monoWavelength: 532,
+    refractiveIndex: 1.33, lightAzimuth: 35, lightElevation: 25, ambient: 0.18,
+    camYaw: 40, camPitch: 15, interference: true, view: 'geometry', deform: 0.55
+  },
+  mono: {
+    gamma: 0.03, gravityOn: false, gravity: 0, damping: 0.5, volFactor: 1.0,
+    avgThick: 900, drainSpeed: 0, diffusion: 0.12, perturbAmp: 0.5,
+    ruptureToggle: true, ruptureThresh: 40, lightMode: 'mono', monoWavelength: 532,
+    refractiveIndex: 1.33, lightAzimuth: 35, lightElevation: 25, ambient: 0.15,
+    camYaw: 40, camPitch: 15, interference: true, view: 'optical'
+  },
+  white: {
+    gamma: 0.03, gravityOn: false, gravity: 0, damping: 0.5, volFactor: 1.0,
+    avgThick: 750, drainSpeed: 0.003, diffusion: 0.15, perturbAmp: 0.8,
+    ruptureToggle: true, ruptureThresh: 40, lightMode: 'white', monoWavelength: 532,
+    refractiveIndex: 1.33, lightAzimuth: 35, lightElevation: 25, ambient: 0.18,
+    camYaw: 40, camPitch: 15, interference: true, view: 'optical'
+  },
+  rupture: {
+    gamma: 0.03, gravityOn: true, gravity: 9.8, damping: 0.5, volFactor: 1.0,
+    avgThick: 180, drainSpeed: 0.02, diffusion: 0.12, perturbAmp: 0.6,
+    ruptureToggle: true, ruptureThresh: 55, lightMode: 'white', monoWavelength: 532,
+    refractiveIndex: 1.33, lightAzimuth: 35, lightElevation: 25, ambient: 0.18,
+    camYaw: 40, camPitch: 15, interference: true, view: 'optical'
+  }
+};
+
+// ---------- 数据面板 ----------
+function updateDataPanel(){
+  if (sim === null) return;
+  const vol = sim.volume;
+  const target = sim.targetVol;
+  const errRatio = (vol - target) / Math.max(target, 1e-9);
+  $('dVol').textContent = vol.toFixed(4) + ' m³';
+  $('dVolT').textContent = target.toFixed(4) + ' m³';
+  const errEl = $('dVolErr');
+  errEl.textContent = (errRatio * 100).toFixed(2) + ' %';
+  errEl.className = 'v ' + (Math.abs(errRatio) < 0.02 ? 'good' : 'warn');
+  $('dPres').textContent = sim.pressure.toFixed(3) + ' Pa';
+  const E = sim.kineticEnergy + sim.springEnergy;
+  $('dEnergy').textContent = E.toFixed(3) + ' J';
+  let hMin = Infinity, hMax = -Infinity, hSum = 0;
+  for (let i = 0; i < sim.N; i++){
+    let x = sim.h[i];
+    if (x < hMin) hMin = x;
+    if (x > hMax) hMax = x;
+    hSum += x;
+  }
+  $('dHavg').textContent = (hSum / sim.N).toFixed(0) + ' nm';
+  $('dHminmax').textContent = hMin.toFixed(0) + ' / ' + hMax.toFixed(0) + ' nm';
+  let rupt = 0;
+  if (sim.ruptureToggle){
+    for (let fi = 0; fi < sim.faces.length; fi++){
+      let f = sim.faces[fi];
+      let hf = (sim.h[f[0]] + sim.h[f[1]] + sim.h[f[2]]) / 3;
+      if (hf < sim.ruptureThresh) rupt++;
+    }
+  }
+  $('dRupt').textContent = rupt + ' / ' + sim.faces.length;
+  $('dMesh').textContent = sim.N + ' / ' + sim.faces.length;
+  $('dFps').textContent = fpsEMA.toFixed(0) + ' / ' + (sim.level >= 5 ? 64 : (sim.level >= 4 ? 16 : SUBSTEPS));
+}
+
+// ---------- 主循环 ----------
+let lastTime = performance.now();
+let accumulator = 0;
+let fpsEMA = 60;
+let fpsFrames = 0;
+let fpsTime = 0;
+
+function frame(now){
+  requestAnimationFrame(frame);
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt < 0) dt = 0;
+  if (dt > 0.05) dt = 0.05;
+  if (state.paused === false && state.diverged === false){
+    accumulator += dt;
+    let maxFrames = 3;
+    while (accumulator >= FRAME_DT && maxFrames > 0){
+      advanceFrame();
+      accumulator -= FRAME_DT;
+      maxFrames--;
+    }
+    if (accumulator > FRAME_DT) accumulator = FRAME_DT;
+  }
+  fpsFrames++;
+  fpsTime += dt;
+  if (fpsTime >= 0.5){
+    fpsEMA = fpsEMA * 0.5 + (fpsFrames / Math.max(fpsTime, 1e-6)) * 0.5;
+    fpsFrames = 0;
+    fpsTime = 0;
+  }
+  render();
+  updateDataPanel();
+}
+
+// ---------- 启动 ----------
+state.seed = parseInt($('seed').value, 10) >>> 0;
+sim = createSimulation(3, state.seed, parseFloat($('volTarget').value), parseFloat($('avgThick').value));
+computeVertexNormals(sim);
+computeCentroid(sim);
+setupUI();
+setupInteraction();
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
