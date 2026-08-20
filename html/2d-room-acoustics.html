@@ -1,0 +1,1910 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>二维房间声学实验室：解析模态 + FDTD</title>
+<style>
+:root{
+  --bg:#0b1016; --panel:#131a22; --panel2:#0f151c; --line:#24303c;
+  --txt:#dbe4ec; --dim:#8aa0b0; --acc:#3aa0ff; --acc2:#ffb454;
+  --red:#ff5f56; --green:#4fd08a; --blue:#4fa8ff; --yellow:#ffd166;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);
+  font-family:"PingFang SC","Microsoft YaHei",-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:13px;}
+body{height:100vh;display:flex;flex-direction:column;overflow:hidden}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:8px 12px;background:linear-gradient(180deg,#16202b,#0f161d);
+  border-bottom:1px solid var(--line);flex-wrap:wrap}
+.title{font-weight:700;font-size:16px;letter-spacing:.5px}
+.title small{display:block;font-weight:400;color:var(--dim);font-size:11px;letter-spacing:0}
+.btn{background:#1a2633;border:1px solid #2e3d4d;color:var(--txt);border-radius:6px;
+  padding:6px 10px;cursor:pointer;font-size:12px;transition:all .15s}
+.btn:hover{border-color:var(--acc);color:#fff}
+.btn.primary{background:#0f3a5f;border-color:#1f6ab0}
+.btn.warn{background:#4a2710;border-color:#b06920}
+.btn.on{background:#0b3d2a;border-color:#1f8a5c;color:#c9ffdf}
+.btn.stop{background:#3d0f14;border-color:#8a2430}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.layout{flex:1;display:grid;grid-template-columns:296px minmax(440px,1fr) 360px;gap:10px;
+  padding:10px;min-height:0}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  overflow-y:auto;padding:10px;min-height:0}
+.panel::-webkit-scrollbar,.scroll::-webkit-scrollbar{width:8px;height:8px}
+.panel::-webkit-scrollbar-thumb,.scroll::-webkit-scrollbar-thumb{background:#2a3947;border-radius:4px}
+h3{margin:2px 0 8px;font-size:12px;letter-spacing:1px;color:#9fc1d8;text-transform:uppercase}
+h4{margin:10px 0 6px;font-size:12px;color:var(--dim);font-weight:600}
+.sec{border-top:1px solid var(--line);padding-top:8px;margin-top:8px}
+.sec:first-child{border-top:0;padding-top:0;margin-top:0}
+label{color:var(--dim);font-size:11px;display:block;margin:5px 0 2px}
+input,select{width:100%;background:#0b1219;color:var(--txt);border:1px solid #2a3a49;
+  border-radius:5px;padding:5px 7px;font-size:12px;outline:none}
+input:focus,select:focus{border-color:var(--acc)}
+input[type=checkbox],input[type=radio]{width:auto;accent-color:var(--acc)}
+.row{display:flex;gap:6px;align-items:flex-end}
+.row>div{flex:1;min-width:0}
+.col2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.col3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.sliderLabel{display:flex;justify-content:space-between;font-size:11px;color:var(--dim)}
+.sliderLabel b{color:var(--txt);font-weight:600}
+input[type=range]{padding:0;height:22px;background:transparent}
+.tag{display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;border:1px solid}
+.tag.axial{color:#ffd166;border-color:#7a5b12}
+.tag.tang{color:#6fd3ff;border-color:#175a78}
+.tag.obl{color:#c49bff;border-color:#5435a0}
+main{display:flex;flex-direction:column;gap:8px;min-width:0;min-height:0}
+.presetrow{display:flex;gap:6px;align-items:center}
+.presetrow select{flex:1}
+.desc{background:#0f1a24;border:1px solid #1d3346;border-radius:8px;padding:8px 10px;
+  color:#b7cbd9;font-size:12px;line-height:1.5;min-height:20px}
+#canvasBox{position:relative;flex:1;background:var(--panel2);border:1px solid var(--line);
+  border-radius:10px;overflow:hidden;min-height:260px}
+#mainCanvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
+.canvas-badge{position:absolute;top:8px;left:10px;background:rgba(8,13,19,.72);
+  border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:11px;color:#b8cad6;pointer-events:none;white-space:pre-line;line-height:1.5}
+.statusbar{display:flex;gap:8px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);
+  border-radius:8px;padding:6px 9px;font-size:11px;color:var(--dim);min-height:34px;align-items:center}
+.statusbar b{color:var(--txt)}
+.statusbar .warn{color:#ffb27d}
+.statusbar .err{color:var(--red)}
+.statusbar .ok{color:var(--green)}
+.chip{background:#0f1a24;border:1px solid #263746;border-radius:20px;padding:3px 9px}
+.card{background:var(--panel2);border:1px solid #22303d;border-radius:8px;padding:7px;margin-bottom:7px}
+.card .r{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
+.card .r>div{flex:1;min-width:58px}
+.card .r>div.w40{flex:0 0 44px}
+.card select{font-size:11px}
+.card input{font-size:11px;padding:3px 5px}
+.card .mini{font-size:10px;color:var(--dim)}
+.objlist{max-height:130px;overflow-y:auto}
+.objitem{display:flex;justify-content:space-between;align-items:center;font-size:11px;
+  background:#0d141c;border:1px solid #21303c;border-radius:6px;padding:3px 7px;margin:3px 0}
+.objitem button{background:none;border:1px solid #31404e;color:#c66;border-radius:4px;cursor:pointer;padding:1px 6px}
+.modetable{width:100%;border-collapse:collapse;font-size:11px}
+.modetable th,.modetable td{padding:3px 4px;text-align:left;border-bottom:1px solid #1c2833;cursor:pointer}
+.modetable th{color:var(--dim);position:sticky;top:0;background:#131a22}
+.modetable tr:hover td{background:#16232f}
+.modetable tr.sel td{background:#0e2c3f}
+.modetable .gapHot{color:#ffb27d;font-weight:700}
+.modetable .gapNear{color:#e0e8ee}
+.modetable td.num{text-align:right;font-variant-numeric:tabular-nums}
+.modeListWrap{max-height:220px;overflow-y:auto;border:1px solid #1d2a36;border-radius:6px}
+.detail{background:#0d1720;border:1px solid #1b3140;border-radius:8px;padding:7px 8px;font-size:11px;
+  line-height:1.65;margin-top:6px;color:#bdd0dc}
+.detail b{color:#fff}
+.schroeder{border-left:3px solid var(--acc2);background:#17130a;border-radius:0 8px 8px 0;padding:7px 8px;
+  font-size:11px;line-height:1.6;color:#ddcba6;margin-top:6px}
+.schroeder .why{color:#9aa7a0;font-size:10.5px}
+.chartwrap{border:1px solid #1e2c39;background:#0a1016;border-radius:8px;overflow:hidden;margin-top:6px}
+.chartwrap canvas{display:block;width:100%;height:150px}
+.chartbtns{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
+.chartbtns .btn{flex:1;padding:4px 3px;font-size:11px}
+.peaktable{width:100%;font-size:10.5px;border-collapse:collapse;margin-top:5px}
+.peaktable th,.peaktable td{border-bottom:1px solid #1b2833;padding:2px 4px;text-align:right}
+.peaktable th:first-child,.peaktable td:first-child{text-align:left}
+.audionote{font-size:10.5px;color:var(--dim);line-height:1.55;margin-top:6px}
+.toolbtns{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.toolbtns .btn{font-size:11px;padding:6px 4px}
+.toolbtns .btn.on{background:#0e3550;border-color:#2b7bb8}
+.mutedbadge{color:#ffd166}
+@media (max-width:1250px){
+  .layout{grid-template-columns:270px minmax(400px,1fr)}
+  .right{grid-column:1 / -1;max-height:340px}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="title">二维房间声学实验室
+    <small>解析模态 · 2D FDTD 波动方程 · 慢动作可视化 · Web Audio 听觉预览</small>
+  </div>
+  <div class="row" style="flex:0 0 auto">
+    <button id="modeFDTD" class="btn primary on">FDTD 波动模式</button>
+    <button id="modeModal" class="btn">解析模态模式</button>
+    <span style="width:8px"></span>
+    <button id="runBtn" class="btn on">运行中</button>
+    <button id="resetBtn" class="btn">重置</button>
+    <button id="pulseBtn" class="btn warn">激发脉冲</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="panel scroll" id="leftPanel">
+    <h3>房间 / 网格</h3>
+    <div class="col3">
+      <div><label>长 Lx (m)</label><input id="roomLx" type="number" min="0.5" max="20" step="0.1" value="4"></div>
+      <div><label>宽 Ly (m)</label><input id="roomLy" type="number" min="0.5" max="20" step="0.1" value="3"></div>
+      <div><label>高 Lz (m)</label><input id="roomLz" type="number" min="0.5" max="20" step="0.1" value="2.5"></div>
+    </div>
+    <div class="col2">
+      <div><label>声速 c (m/s)</label><input id="roomC" type="number" min="100" max="2000" step="1" value="343"></div>
+      <div><label>空气密度 ρ (kg/m³)</label><input id="roomRho" type="number" min="0.1" max="10" step="0.01" value="1.2"></div>
+    </div>
+    <div class="col2">
+      <div><label>网格分辨率</label>
+        <select id="resSelect">
+          <option value="0.02">精细 dx≈2cm</option>
+          <option value="0.03">较细 dx≈3cm</option>
+          <option value="0.04" selected>中等 dx≈4cm</option>
+          <option value="0.06">较粗 dx≈6cm</option>
+          <option value="0.08">粗 dx≈8cm</option>
+        </select>
+      </div>
+      <div><label>CFL 安全系数 s</label><input id="cflSafety" type="number" min="0.1" max="0.99" step="0.01" value="0.90"></div>
+    </div>
+    <div class="col2">
+      <div><label>每帧推进步数（视觉慢动作）</label><input id="stepsPerFrame" type="number" min="1" max="400" step="1" value="30"></div>
+      <div><label>空气吸收 α (1/s)</label><input id="airAlpha" type="number" min="0" max="200" step="0.1" value="0.5"></div>
+    </div>
+
+    <div class="sec">
+      <h3>墙面吸声系数（0 刚性，1 全吸）</h3>
+      <div class="sliderLabel"><span>左墙</span><b id="wallLV">0.00</b></div>
+      <input id="wallL" type="range" min="0" max="0.95" step="0.01" value="0">
+      <div class="sliderLabel"><span>右墙</span><b id="wallRV">0.00</b></div>
+      <input id="wallR" type="range" min="0" max="0.95" step="0.01" value="0">
+      <div class="sliderLabel"><span>上墙</span><b id="wallTV">0.00</b></div>
+      <input id="wallT" type="range" min="0" max="0.95" step="0.01" value="0">
+      <div class="sliderLabel"><span>下墙</span><b id="wallBV">0.00</b></div>
+      <input id="wallB" type="range" min="0" max="0.95" step="0.01" value="0">
+      <div class="row" style="margin-top:6px">
+        <button class="btn" id="wallRigidBtn" style="flex:1">全部刚性</button>
+        <button class="btn" id="wallAbsBtn" style="flex:1">全部 α=0.35</button>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h3>声源（FDTD 网格直接注入）</h3>
+      <div id="srcList"></div>
+      <button class="btn" id="addSourceBtn" style="width:100%">+ 添加声源</button>
+    </div>
+
+    <div class="sec">
+      <h3>监听点（波形取自该处场值）</h3>
+      <div id="lisList"></div>
+      <div class="row">
+        <button class="btn" id="addListenerBtn" style="flex:1">+ 添加监听点</button>
+        <button class="btn primary" id="findUniformBtn" style="flex:1">寻找最均匀位置</button>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h3>绘制工具</h3>
+      <div class="toolbtns">
+        <button class="btn on" data-tool="select">选择 / 拖动 / 读数</button>
+        <button class="btn" data-tool="obstacle">绘制刚性墙/障碍物</button>
+        <button class="btn" data-tool="panel">绘制吸声板</button>
+        <button class="btn" data-tool="erase">擦除物体</button>
+      </div>
+      <label>新吸声板系数 <b id="panelAbsV">0.80</b></label>
+      <input id="panelAbs" type="range" min="0.05" max="0.98" step="0.01" value="0.8">
+      <div class="objlist" id="objList"></div>
+    </div>
+
+    <div class="sec">
+      <h3>可视化</h3>
+      <label>FDTD 显示量</label>
+      <select id="visualMode">
+        <option value="pressure" selected>瞬时声压场（红正蓝负）</option>
+        <option value="dual">正负声压双色图（硬双色）</option>
+        <option value="rms">声压 RMS 分布</option>
+        <option value="nodes">节点与腹点</option>
+        <option value="energy">能量密度</option>
+        <option value="modeShape">解析房间模态形状</option>
+      </select>
+      <label>模态 z 切片位置 <b id="zSliceV">1.25 m</b></label>
+      <input id="zSlice" type="range" min="0" max="2.5" step="0.01" value="1.25">
+    </div>
+
+    <div class="sec">
+      <h3>预置实验</h3>
+      <div class="row">
+        <select id="presetSelect"></select>
+        <button class="btn primary" id="presetApply">应用</button>
+      </div>
+      <div class="desc" id="presetDesc" style="margin-top:6px"></div>
+    </div>
+  </aside>
+
+  <main>
+    <div class="canvas-badge" id="canvasBadge">FDTD · 瞬时声压场</div>
+    <div id="canvasBox">
+      <canvas id="mainCanvas"></canvas>
+    </div>
+    <div class="statusbar" id="statusBar">
+      <span class="chip" id="cflChip">CFL：--</span>
+      <span class="chip" id="timeChip">视觉时间：0.000 s</span>
+      <span class="chip" id="slowChip">慢动作：--</span>
+      <span class="chip" id="mouseChip">点击画布读取局部声压</span>
+      <span class="chip" id="runChip"></span>
+    </div>
+  </main>
+
+  <aside class="panel scroll right" id="rightPanel">
+    <div class="sec">
+      <h3>听觉预览（Web Audio · 模态合成）</h3>
+      <div class="row">
+        <label style="margin:0"><input id="audioMuted" type="checkbox" checked> 静音（默认）</label>
+        <div style="flex:1"></div>
+      </div>
+      <div class="sliderLabel"><span>音量（硬上限 0.5）</span><b id="audioVolV">0.20</b></div>
+      <input id="audioVolume" type="range" min="0" max="0.5" step="0.01" value="0.2">
+      <div class="row" style="margin-top:6px">
+        <button class="btn primary" id="audioPlay" style="flex:1">▶ 播放监听点</button>
+        <button class="btn" id="audioStop" style="flex:1">停止</button>
+      </div>
+      <div id="audioStatus" class="audionote">状态：静音，未播放</div>
+      <div class="audionote">
+        音频预览使用<b>模态合成 + Convolver</b>（房间模态冲激响应卷积声源信号），
+        而非把整张 FDTD 网格按实时音频采样率计算。播放始终为真实时间；
+        主画布是独立的视觉慢动作时间。切换监听点时会做短淡入淡出，避免爆音。
+      </div>
+    </div>
+
+    <div class="sec">
+      <h3>FDTD 稳定性（CFL）</h3>
+      <div class="detail" id="cflInfo">--</div>
+      <div class="detail" id="simInfo">--</div>
+    </div>
+
+    <div class="sec">
+      <h3>解析房间模态</h3>
+      <div class="row">
+        <div><label>f min (Hz)</label><input id="fmin" type="number" min="0" max="2000" step="1" value="20"></div>
+        <div><label>f max (Hz)</label><input id="fmax" type="number" min="1" max="4000" step="1" value="150"></div>
+      </div>
+      <div class="modeListWrap" id="modeListWrap"><div style="padding:8px;color:#8aa0b0">--</div></div>
+      <div id="modeDetail" class="detail">点击模态行查看空间分布。</div>
+      <div id="schroederBox"></div>
+    </div>
+
+    <div class="sec">
+      <h3>监听点信号分析</h3>
+      <div class="chartbtns">
+        <button class="btn on" data-chart="spectrum">简化频谱</button>
+        <button class="btn" data-chart="wave">时域波形</button>
+        <button class="btn" data-chart="ir">脉冲响应</button>
+        <button class="btn" data-chart="fr">频率响应</button>
+      </div>
+      <div class="chartwrap"><canvas id="chartCanvas"></canvas></div>
+      <div id="chartInfo" class="audionote">--</div>
+      <div id="validationBox"></div>
+    </div>
+  </aside>
+</div>
+
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const fmt=(x,d=2)=>Number(x).toFixed(d);
+
+const state={
+  mode:'fdtd', running:true,
+  Lx:4, Ly:3, Lz:2.5, c:343, rho:1.2, alphaAir:0.5,
+  dxBase:0.04, cflSafety:0.90, stepsPerFrame:30,
+  wallA:{l:0,r:0,t:0,b:0},
+  tool:'select', panelAbs:0.80, visualMode:'pressure', zSlice:1.25,
+  sources:[
+    {id:1, active:true, type:'sine', freq:42.875, phaseDeg:0, amp:1.0, x:0.06, y:0.06,
+     sweepEnd:200, sweepDur:2.0, pulseWidth:5, pulseRepeat:0, t0:0, noiseState:0}
+  ],
+  listeners:[
+    {id:1, active:true, x:2.0, y:1.5}
+  ],
+  selectedListener:0,
+  obstacles:[], panels:[],
+  fmin:20, fmax:150, selectedModeIndex:0,
+  chartType:'spectrum'
+};
+
+let fd=null;
+let modalModes=[];
+let simTime=0, stepCount=0, frameCount=0;
+let clampWarn=false;
+let dragState=null;
+let drawState=null;
+let selectedModeKey=null;
+let audioState={
+  ctx:null, playing:false, muted:true, volume:0.2,
+  currentSrc:null, currentGain:null, generation:0, status:''
+};
+
+/* ---------------- 数学 / 房间模态 ---------------- */
+function modeFreq(nx,ny,nz){
+  const Lx=state.Lx, Ly=state.Ly, Lz=state.Lz;
+  return state.c/2 * Math.sqrt((nx/Lx)**2 + (ny/Ly)**2 + (nz/Lz)**2);
+}
+function modeClass(nx,ny,nz){
+  const z = (nx>0?1:0)+(ny>0?1:0)+(nz>0?1:0);
+  return z===1?'轴向':(z===2?'切向':'斜向');
+}
+function modeClassTag(nx,ny,nz){
+  const z=(nx>0?1:0)+(ny>0?1:0)+(nz>0?1:0);
+  return z===1?'axial':(z===2?'tang':'obl');
+}
+function modeKey(nx,ny,nz){return nx+','+ny+','+nz;}
+function modeShape(nx,ny,nz,x,y,z){
+  return Math.cos(nx*Math.PI*x/state.Lx)*Math.cos(ny*Math.PI*y/state.Ly)*Math.cos(nz*Math.PI*z/state.Lz);
+}
+function analytic2DModes(fmax){
+  const out=[];
+  const nxMax=Math.ceil(2*fmax*state.Lx/state.c)+1;
+  const nyMax=Math.ceil(2*fmax*state.Ly/state.c)+1;
+  for(let nx=0;nx<=nxMax;nx++)for(let ny=0;ny<=nyMax;ny++){
+    if(nx===0&&ny===0)continue;
+    const f=modeFreq(nx,ny,0);
+    if(f<=fmax)out.push({nx,ny,nz:0,f});
+  }
+  out.sort((a,b)=>a.f-b.f);
+  return out;
+}
+
+function computeModes(){
+  const fmin=Number(state.fmin), fmax=Number(state.fmax);
+  if(!(fmax>fmin)){modalModes=[];return;}
+  const nxMax=Math.ceil(2*fmax*state.Lx/state.c)+1;
+  const nyMax=Math.ceil(2*fmax*state.Ly/state.c)+1;
+  const nzMax=Math.ceil(2*fmax*state.Lz/state.c)+1;
+  const arr=[];
+  for(let nx=0;nx<=nxMax;nx++)for(let ny=0;ny<=nyMax;ny++)for(let nz=0;nz<=nzMax;nz++){
+    if(nx===0&&ny===0&&nz===0)continue;
+    const f=modeFreq(nx,ny,nz);
+    if(f>=fmin&&f<=fmax)arr.push({nx,ny,nz,f,cls:modeClass(nx,ny,nz),tag:modeClassTag(nx,ny,nz),key:modeKey(nx,ny,nz)});
+  }
+  arr.sort((a,b)=>a.f-b.f);
+  if(arr.length>2500)arr.length=2500;
+  for(let i=0;i<arr.length;i++)arr[i].gap = i===0?0:arr[i].f-arr[i-1].f;
+  modalModes=arr;
+  if(selectedModeKey){
+    const idx=arr.findIndex(m=>m.key===selectedModeKey);
+    if(idx>=0)state.selectedModeIndex=idx; else state.selectedModeIndex=0;
+  } else state.selectedModeIndex=0;
+}
+function selectedModal(){return modalModes[state.selectedModeIndex]||null;}
+
+function calcSchroeder(){
+  const {Lx,Ly,Lz,wallA}=state;
+  const V=Lx*Ly*Lz;
+  const aAvg=(wallA.l+wallA.r+wallA.t+wallA.b)/4;
+  const Sxy=Lx*Ly, Sxz=Lx*Lz, Syz=Ly*Lz;
+  const A = 2*Syz*(wallA.l+wallA.r)/2 + 2*Sxz*(wallA.t+wallA.b)/2 + 2*Sxy*aAvg;
+  const aUse = A/(2*(Sxy+Sxz+Syz));
+  if(aUse<=1e-9) return {V,A,aAvg:aUse,T60:Infinity,fs:Infinity};
+  const T60=0.161*V/Math.max(A,1e-6);
+  const fsSchr=2000*Math.sqrt(Math.min(T60,20)/V);
+  return {V,A,aAvg:aUse,T60,fs:fsSchr};
+}
+function wallG(a){
+  const R=Math.sqrt(clamp(1-a,0,1));
+  const gc=(1-R)/((1+R)*state.c);
+  return clamp(gc,0,1/state.c);
+}
+
+/* ---------------- FDTD 网格 ---------------- */
+function initFDTD(){
+  const dxBase=state.dxBase;
+  let Nx=Math.max(12,Math.min(260,Math.round(state.Lx/dxBase)));
+  let Ny=Math.max(12,Math.min(260,Math.round(state.Ly/dxBase)));
+  const dx=state.Lx/Nx, dy=state.Ly/Ny;
+  const dtCFL=1/(state.c*Math.sqrt(1/(dx*dx)+1/(dy*dy)));
+  const safety=clamp(Number(state.cflSafety)||0.9,0.1,0.99);
+  const dt=dtCFL*safety;
+  const N=Nx*Ny;
+  fd={
+    Nx,Ny,dx,dy,dt,dtCFL,safety,
+    p:new Float32Array(N), pOld:new Float32Array(N), pNew:new Float32Array(N),
+    u:new Float32Array(N), v:new Float32Array(N),
+    rms:new Float32Array(N),
+    solid:new Uint8Array(N), panelLoss:new Float32Array(N),
+    G:{l:wallG(state.wallA.l),r:wallG(state.wallA.r),t:wallG(state.wallA.t),b:wallG(state.wallA.b)},
+    irPending:false, irPos:0,
+    clampCount:0
+  };
+  recomputeFlags();
+  simTime=0; stepCount=0; clampWarn=false;
+  state.sources.forEach(s=>{s.t0=0;s.noiseState=0;});
+  state.listeners.forEach((lis)=>{
+    lis.hist=new Float32Array(16384); lis.head=0; lis.count=0;
+    lis.ir=new Float32Array(4096); lis.irCount=0;
+  });
+  fd.irPending=state.sources.some(s=>s.type==='pulse'&&s.active); fd.irPos=0;
+  updateFDTDInfo();
+}
+function recomputeFlags(){
+  if(!fd)return;
+  const {Nx,Ny,dx,dy}=fd;
+  fd.solid.fill(0); fd.panelLoss.fill(0);
+  for(const ob of state.obstacles){
+    const x0=Math.min(ob.x0,ob.x1), x1=Math.max(ob.x0,ob.x1);
+    const y0=Math.min(ob.y0,ob.y1), y1=Math.max(ob.y0,ob.y1);
+    const i0=clamp(Math.floor(x0/dx),0,Nx-1), i1=clamp(Math.ceil(x1/dx)-1,0,Nx-1);
+    const j0=clamp(Math.floor(y0/dy),0,Ny-1), j1=clamp(Math.ceil(y1/dy)-1,0,Ny-1);
+    for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++){
+      const idx=i+j*Nx; fd.solid[idx]=1; fd.panelLoss[idx]=0;
+    }
+  }
+  for(const pa of state.panels){
+    const x0=Math.min(pa.x0,pa.x1), x1=Math.max(pa.x0,pa.x1);
+    const y0=Math.min(pa.y0,pa.y1), y1=Math.max(pa.y0,pa.y1);
+    const i0=clamp(Math.floor(x0/dx),0,Nx-1), i1=clamp(Math.ceil(x1/dx)-1,0,Nx-1);
+    const j0=clamp(Math.floor(y0/dy),0,Ny-1), j1=clamp(Math.ceil(y1/dy)-1,0,Ny-1);
+    for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++){
+      const idx=i+j*Nx;
+      if(!fd.solid[idx]) fd.panelLoss[idx]=Math.max(fd.panelLoss[idx], pa.a*120);
+    }
+  }
+  for(let i=0;i<fd.Nx*fd.Ny;i++)if(fd.solid[i]){fd.p[i]=0;fd.pOld[i]=0;fd.pNew[i]=0;fd.rms[i]=0;fd.u[i]=0;fd.v[i]=0;}
+}
+function nearestFreeIndex(x,y){
+  const nx=fd.Nx, ny=fd.Ny;
+  const cx=x/fd.dx-0.5, cy=y/fd.dy-0.5;
+  let i=clamp(Math.round(cx),0,nx-1), j=clamp(Math.round(cy),0,ny-1);
+  if(!fd.solid[i+j*nx])return i+j*nx;
+  for(let r=1;r<8;r++)for(let dj=-r;dj<=r;dj++)for(let di=-r;di<=r;di++){
+    if(Math.max(Math.abs(di),Math.abs(dj))!==r)continue;
+    const ii=i+di,jj=j+dj;
+    if(ii>=0&&ii<nx&&jj>=0&&jj<ny&&!fd.solid[ii+jj*nx])return ii+jj*nx;
+  }
+  return i+j*nx;
+}
+function sourceValue(src,t,dt){
+  const f=Number(src.freq)||1;
+  if(src.type==='sine'){
+    return Math.sin(2*Math.PI*f*t + src.phaseDeg*Math.PI/180);
+  }else if(src.type==='pulse'){
+    let tau=t-src.t0;
+    if(src.pulseRepeat>0&&tau>src.pulseRepeat){
+      src.t0+=Math.floor(tau/src.pulseRepeat)*src.pulseRepeat;
+      tau=t-src.t0;
+    }
+    const width=(src.pulseWidth||5)/f;
+    if(tau<0||tau>width)return 0;
+    const env=0.5*(1-Math.cos(2*Math.PI*tau/width));
+    return env*Math.sin(2*Math.PI*f*tau + src.phaseDeg*Math.PI/180);
+  }else if(src.type==='sweep'){
+    const f0=Number(src.freq)||20, f1=Number(src.sweepEnd)||200;
+    const T=Math.max(0.2,Number(src.sweepDur)||2);
+    const tau=(t-src.t0)%T;
+    const phase=2*Math.PI*(f0*tau + (f1-f0)*tau*tau/(2*T));
+    return Math.sin(phase);
+  }else{
+    const target=Math.random()*2-1;
+    const fc=Math.max(50,Math.min(f*1.5,600));
+    const k=1-Math.exp(-2*Math.PI*fc*dt);
+    src.noiseState += k*(target-src.noiseState);
+    return src.noiseState*1.7;
+  }
+}
+function bilinearPressure(x,y){
+  const nx=fd.Nx, ny=fd.Ny, dx=fd.dx, dy=fd.dy;
+  const gx=clamp(x/dx-0.5,0,nx-1.001), gy=clamp(y/dy-0.5,0,ny-1.001);
+  const i=Math.floor(gx), j=Math.floor(gy);
+  const tx=gx-i, ty=gy-j;
+  const i2=Math.min(i+1,nx-1), j2=Math.min(j+1,ny-1);
+  const a=fd.p[i+j*nx], b=fd.p[i2+j*nx], c=fd.p[i+j2*nx], d=fd.p[i2+j2*nx];
+  return (a*(1-tx)+b*tx)*(1-ty) + (c*(1-tx)+d*tx)*ty;
+}
+
+function fdtdStep(){
+  const nx=fd.Nx, ny=fd.Ny, dx=fd.dx, dy=fd.dy, dt=fd.dt;
+  const p=fd.p, po=fd.pOld, pn=fd.pNew, solid=fd.solid;
+  const alpha=Number(state.alphaAir)||0;
+  const c2=state.c*state.c, c2dt2=c2*dt*dt;
+  const Gl=fd.G.l, Gr=fd.G.r, Gt=fd.G.t, Gb=fd.G.b;
+  const invdx2=1/(dx*dx), invdy2=1/(dy*dy);
+  for(let j=0;j<ny;j++){
+    const row=j*nx;
+    for(let i=0;i<nx;i++){
+      const idx=i+row;
+      if(solid[idx]){pn[idx]=0;continue;}
+      const p0=p[idx], pOld=po[idx];
+      const pt=(p0-pOld)/dt;
+      let lap=0;
+      let g;
+      // 外墙面：∂p/∂n=-(ρ/Z)∂p/∂t → 离散 ghost=p0-h·G·∂p/∂t（G=ρ/Z 的归一化值）
+      if(i===0){g=p0-dx*Gl*pt;}
+      else g=solid[idx-1]?p0:p[idx-1];
+      lap += (g-p0)*invdx2;
+      if(i===nx-1){g=p0-dx*Gr*pt;}
+      else g=solid[idx+1]?p0:p[idx+1];
+      lap += (g-p0)*invdx2;
+      if(j===0){g=p0-dy*Gt*pt;}
+      else g=solid[idx-nx]?p0:p[idx-nx];
+      lap += (g-p0)*invdy2;
+      if(j===ny-1){g=p0-dy*Gb*pt;}
+      else g=solid[idx+nx]?p0:p[idx+nx];
+      lap += (g-p0)*invdy2;
+      let v = 2*p0 - pOld + c2dt2*lap - alpha*dt*(p0-pOld);
+      if(fd.panelLoss[idx]>0) v*=Math.exp(-fd.panelLoss[idx]*dt);
+      pn[idx]=v;
+    }
+  }
+  for(const src of state.sources){
+    if(!src.active)continue;
+    const val=sourceValue(src,simTime,dt);
+    if(val===0)continue;
+    const idx=nearestFreeIndex(clamp(src.x,0,state.Lx),clamp(src.y,0,state.Ly));
+    pn[idx]+=val*dt*dt*src.amp*1e5;
+  }
+  let maxAbs=0;
+  for(let i=0;i<pn.length;i++){
+    const v=pn[i];
+    if(v>80){pn[i]=80;fd.clampCount++;}
+    else if(v<-80){pn[i]=-80;fd.clampCount++;}
+    const a=Math.abs(pn[i]);
+    if(a>maxAbs)maxAbs=a;
+  }
+  if(fd.clampCount>0)clampWarn=true;
+  const tmp=po; fd.pOld=p; fd.p=pn; fd.pNew=tmp;
+  const tau=0.14, kRms=1-Math.exp(-dt/tau);
+  const kDamp=Math.exp(-alpha*dt);
+  const rms=fd.rms, u=fd.u, vv=fd.v;
+  for(let j=0;j<ny;j++){
+    const row=j*nx;
+    for(let i=0;i<nx;i++){
+      const idx=i+row;
+      if(solid[idx]){rms[idx]=0;u[idx]=0;vv[idx]=0;continue;}
+      const p0=p[idx];
+      rms[idx]+=kRms*(p0*p0-rms[idx]);
+      const pl=(i===0)?p[idx]:(solid[idx-1]?p0:p[idx-1]);
+      const pr=(i===nx-1)?p[idx]:(solid[idx+1]?p0:p[idx+1]);
+      const pu=(j===0)?p[idx]:(solid[idx-nx]?p0:p[idx-nx]);
+      const pd=(j===ny-1)?p[idx]:(solid[idx+nx]?p0:p[idx+nx]);
+      const hx=(i===0||i===nx-1)?dx:2*dx;
+      const hy=(j===0||j===ny-1)?dy:2*dy;
+      const dpx=(pr-pl)/hx, dpy=(pd-pu)/hy;
+      u[idx]=(u[idx]-dpx/state.rho*dt)*kDamp;
+      vv[idx]=(vv[idx]-dpy/state.rho*dt)*kDamp;
+    }
+  }
+  for(let li=0;li<state.listeners.length;li++){
+    const lis=state.listeners[li];
+    if(!lis.active)continue;
+    if(!lis.hist)continue;
+    const val=bilinearPressure(clamp(lis.x,0,state.Lx),clamp(lis.y,0,state.Ly));
+    lis.hist[lis.head]=val; lis.head=(lis.head+1)%lis.hist.length; if(lis.count<lis.hist.length)lis.count++;
+    if(fd.irPending && fd.irPos<lis.ir.length){
+      lis.ir[fd.irPos]=val;
+      lis.irCount=fd.irPos+1;
+    }
+  }
+  if(fd.irPending){
+    fd.irPos++;
+    if(fd.irPos>=4096)fd.irPending=false;
+  }
+  simTime+=dt; stepCount++;
+}
+
+/* ---------------- 解析模态列表渲染 ---------------- */
+function renderModeList(){
+  computeModes();
+  const wrap=$('modeListWrap');
+  if(!modalModes.length){wrap.innerHTML='<div style="padding:8px;color:#8aa0b0">该频率范围内没有模态，或范围无效。</div>';return;}
+  let html='<table class="modetable"><thead><tr><th>f (Hz)</th><th>模态</th><th>类型</th><th>Δf</th></tr></thead><tbody>';
+  const sel=selectedModal();
+  modalModes.forEach((m,i)=>{
+    let gapTxt='--', gapCls='';
+    if(i>0){
+      gapTxt=fmt(m.gap,2);
+      if(m.gap<1.0)gapCls='gapHot';
+      else if(m.gap<2.5)gapCls='gapNear';
+    }
+    const isSel=sel&&sel.key===m.key;
+    html+=`<tr class="${isSel?'sel':''}" data-mi="${i}">
+      <td class="num">${fmt(m.f,2)}</td>
+      <td>${m.nx},${m.ny},${m.nz}</td>
+      <td><span class="tag ${m.tag}">${m.cls}</span></td>
+      <td class="num ${gapCls}">${gapTxt}</td></tr>`;
+  });
+  html+='</tbody></table>';
+  if(modalModes.length>=2500)html+='<div style="padding:4px 8px;color:#ffb27d">模态过多，仅显示前 2500 个。</div>';
+  wrap.innerHTML=html;
+  wrap.querySelectorAll('tr[data-mi]').forEach(tr=>{
+    tr.addEventListener('click',()=>{selectMode(Number(tr.dataset.mi));});
+  });
+  renderModeDetail();
+  updateBadge();
+}
+function selectMode(i){
+  if(!modalModes[i])return;
+  state.selectedModeIndex=i; selectedModeKey=modalModes[i].key;
+  renderModeList();
+  if(state.mode==='modal')drawMain();
+}
+function renderModeDetail(){
+  const box=$('modeDetail');
+  const m=selectedModal();
+  if(!m){box.innerHTML='点击模态行查看空间分布。';return;}
+  const z=clamp(state.zSlice,0,state.Lz);
+  const zFac=modeShape(m.nx,m.ny,m.nz,state.Lx*0.25,state.Ly*0.25,z);
+  let near=[];
+  for(const q of modalModes){
+    if(q.key!==m.key && Math.abs(q.f-m.f)<=2.0)near.push(`${q.nx},${q.ny},${q.nz} @ ${fmt(q.f,1)}Hz`);
+    if(near.length>=6)break;
+  }
+  box.innerHTML=`<b>选中模态</b> (${m.nx}, ${m.ny}, ${m.nz}) · f = <b>${fmt(m.f,2)} Hz</b> · ${m.cls}模态<br>
+    f = c/2·√[(nx/Lx)²+(ny/Ly)²+(nz/Lz)²]<br>
+    与前一模态间隔 Δf = ${m.gap?fmt(m.gap,2)+' Hz':'—'}${near.length?`<br><b>相近模态聚集</b>：${near.join('；')}`:''}<br>
+    当前 z=${fmt(z,2)}m 切片模态因子 cos(nzπz/Lz)=${fmt(zFac,3)}${Math.abs(zFac)<0.02?'（该切片恰为节点，请调整 z）':''}<br>
+    <span style="color:#8aa0b0">主画布显示该模态在 z 切片上的声压分布 cos(nxπx/Lx)·cos(nyπy/Ly)·cos(nzπz/Lz)。</span>`;
+}
+function renderSchroeder(){
+  const s=calcSchroeder();
+  let html;
+  if(!isFinite(s.fs)){
+    html=`<b>Schroeder 频率估计：∞（无吸收）</b><br>
+    当前平均吸声系数≈0，T60 趋向无穷，低频离散模态区理论上延伸到全部频段。`;
+  }else{
+    html=`<b>Schroeder 频率估计：f<sub>s</sub> ≈ ${fmt(s.fs,0)} Hz</b><br>
+    V=${fmt(s.V,1)} m³，平均吸声系数 ā=${fmt(s.aAvg,3)}，T60≈${fmt(s.T60,2)} s。<br>
+    f<sub>s</sub>=2000·√(T60/V)。`;
+  }
+  html+=`<div class="why">适用范围：这是<b>简化估计</b>，把 Schroeder 频率作为“离散可辨模态区”与“统计/扩散声场区”的分界。
+  它假设 Sabine 扩散场、吸收均匀且不很强；对很小、很规则或强阻尼房间只是量级参考，并非严格物理边界。
+  低于 f<sub>s</sub> 时单个房间模态可分辨，FDTD/模态结果更可靠；高于 f<sub>s</sub> 时模态重叠，宜用统计声学。</div>`;
+  $('schroederBox').innerHTML=`<div class="schroeder">${html}</div>`;
+}
+
+/* ---------------- 预置实验 ---------------- */
+const PRESETS=[
+ {id:'lowestMode',name:'① 矩形房间最低阶模态',
+  desc:'切换到解析模态模式，显示 (1,0,0) 最低轴向模态。其声压在 x=0 与 x=Lx 为腹点，x=Lx/2 为节线。',
+  apply(){setMode('modal');state.Lx=4;state.Ly=3;state.Lz=2.5;state.c=343;
+    state.fmin=20;state.fmax=80;state.zSlice=1.25;selectedModeKey='1,0,0';
+    setWalls(0,0,0,0);state.obstacles=[];state.panels=[];
+    state.sources=[{id:1,active:true,type:'sine',freq:modeFreq(1,0,0),phaseDeg:0,amp:1,x:0.06,y:0.06,sweepEnd:200,sweepDur:2,pulseWidth:5,pulseRepeat:0,t0:0,noiseState:0}];
+    state.listeners=[{id:1,active:true,x:2.0,y:1.5}];state.selectedListener=0;
+  }},
+ {id:'cornerCenter',name:'② 扬声器：墙角 vs 房间中心',
+  desc:'S1 位于墙角（1,0,0 模态腹点，已启用），S2 位于房间中心（激发效率低，已停用）。在声源列表里交替启用 S1/S2，比较同一监听点的波形幅度。',
+  apply(){setMode('fdtd');state.Lx=4;state.Ly=3;state.Lz=2.5;state.c=343;
+    state.visualMode='pressure';setWalls(0,0,0,0);state.airAlpha=0.8;
+    const f=modeFreq(1,0,0);
+    state.sources=[
+      {id:1,active:true,type:'sine',freq:f,phaseDeg:0,amp:1,x:0.06,y:0.06,sweepEnd:200,sweepDur:2,pulseWidth:5,pulseRepeat:0,t0:0,noiseState:0},
+      {id:2,active:false,type:'sine',freq:f,phaseDeg:0,amp:1,x:2.0,y:1.5,sweepEnd:200,sweepDur:2,pulseWidth:5,pulseRepeat:0,t0:0,noiseState:0}
+    ];
+    state.listeners=[{id:1,active:true,x:3.2,y:1.5}];
+    state.selectedListener=0;state.obstacles=[];state.panels=[];state.fmin=20;state.fmax=100;
+    state.chartType='wave';
+  }},
+ {id:'nodeListener',name:'③ 监听点恰好位于节点',
+  desc:'声源在墙角激发 (1,0,0) 模态，监听点放在 x=Lx/2 节线上，波形应接近零；另有对照监听点离开节线。',
+  apply(){setMode('fdtd');state.Lx=4;state.Ly=3;state.Lz=2.5;state.c=343;
+    state.visualMode='rms';setWalls(0,0,0,0);state.airAlpha=0.5;
+    const f=modeFreq(1,0,0);
+    state.sources=[{id:1,active:true,type:'sine',freq:f,phaseDeg:0,amp:1,x:0.06,y:0.06,sweepEnd:200,sweepDur:2,pulseWidth:5,pulseRepeat:0,t0:0,noiseState:0}];
+    state.listeners=[{id:1,active:true,x:2.0,y:1.5},{id:2,active:true,x:2.4,y:1.5}];
+    state.selectedListener=0;state.obstacles=[];state.panels=[];state.chartType='wave';
+  }},
+ {id:'twoSource',name:'④ 两声源同相 / 反相干涉',
+  desc:'两个等幅、对称声源置于 x≈1.0 与 x≈3.0（按网格取完全对称）。监听点 1 位于对称中面 x=2.0：反相时该处发生相消干涉（消声区）。修改声源 2 相位为 0° 可对比同相。',
+  apply(){setMode('fdtd');state.Lx=4;state.Ly=3;state.Lz=2.5;state.c=343;
+    state.visualMode='pressure';setWalls(0,0,0,0);state.airAlpha=1.2;
+    const f=80;
+    state.sources=[
+      {id:1,active:true,type:'sine',freq:f,phaseDeg:0,amp:1,x:1.02,y:1.5,sweepEnd:200,sweepDur:2,pulseWidth:5,pulseRepeat:0,t0:0,noiseState:0},
+      {id:2,active:true,type:'sine',freq:f,phaseDeg:180,amp:1,x:2.98,y:1.5,sweepEnd:200,sweepDur:2,pulseWidth:5,pulseRepeat:0,t0:0,noiseState:0}
+    ];
+    state.listeners=[{id:1,active:true,x:2.0,y:1.5},{id:2,active:true,x:2.5,y:1.0}];
+    state.selectedListener=0;state.obstacles=[];state.panels=[];state.chartType='spectrum';
+  }},
+ {id:'noAbsorber',name:'⑤ 吸声板比较：未加吸声板',
+  desc:'连续正弦 + 刚性墙。脉冲/正弦衰减慢，频谱共振峰尖锐。与下一个预置“已加吸声板”对比。',
+  apply(){setMode('fdtd');state.Lx=4;state.Ly=3;state.Lz=2.5;state.c=343;
+    state.visualMode='pressure';setWalls(0,0,0,0);state.airAlpha=0.4;
+    state.sources=[{id:1,active:true,type:'sine',freq:90,phaseDeg:0,amp:1,x:0.8,y:1.5,sweepEnd:200,sweepDur:2,pulseWidth:5,pulseRepeat:0,t0:0,noiseState:0}];
+    state.listeners=[{id:1,active:true,x:3.2,y:1.5}];state.selectedListener=0;
+    state.obstacles=[];state.panels=[];state.chartType='wave';
+  }},
+ {id:'absorber',name:'⑤′ 吸声板比较：已加吸声板',
+  desc:'在声源与监听点之间插入 α=0.85 的吸声板区域。墙面与空气吸收相同，但到达监听点的能量减少、脉冲响应衰减加快。',
+  apply(){setMode('fdtd');state.Lx=4;state.Ly=3;state.Lz=2.5;state.c=343;
+    state.visualMode='pressure';setWalls(0,0,0,0);state.airAlpha=0.4;
+    state.sources=[{id:1,active:true,type:'sine',freq:90,phaseDeg:0,amp:1,x:0.8,y:1.5,sweepEnd:200,sweepDur:2,pulseWidth:5,pulseRepeat:0,t0:0,noiseState:0}];
+    state.listeners=[{id:1,active:true,x:3.2,y:1.5}];state.selectedListener=0;
+    state.obstacles=[];
+    state.panels=[{x0:2.15,y0:0.4,x1:2.45,y1:2.6,a:0.85}];
+    state.chartType='wave';
+  }},
+ {id:'square',name:'⑥ 长宽相等 → 模态简并',
+  desc:'正方形房间中 (1,2,0) 与 (2,1,0) 频率完全相同，形成简并模态。模态列表中 Δf=0 被标为热点。',
+  apply(){setMode('modal');state.Lx=3;state.Ly=3;state.Lz=3;state.c=343;
+    state.fmin=20;state.fmax=220;state.zSlice=1.0;selectedModeKey='1,2,0';
+    setWalls(0,0,0,0);state.obstacles=[];state.panels=[];
+    state.sources=[{id:1,active:true,type:'sine',freq:modeFreq(1,2,0),phaseDeg:0,amp:1,x:0.1,y:0.1,sweepEnd:300,sweepDur:2,pulseWidth:5,pulseRepeat:0,t0:0,noiseState:0}];
+    state.listeners=[{id:1,active:true,x:1.5,y:1.5}];state.selectedListener=0;
+  }},
+ {id:'pulse',name:'⑦ 脉冲产生多次反射',
+  desc:'刚性墙房间内施加减速可视的短脉冲。观察波前在墙面间的多次反射；监听点脉冲响应显示一串到达峰。',
+  apply(){setMode('fdtd');state.Lx=4;state.Ly=3;state.Lz=2.5;state.c=343;
+    state.visualMode='pressure';setWalls(0,0,0,0);state.airAlpha=0.3;state.stepsPerFrame=22;
+    state.sources=[{id:1,active:true,type:'pulse',freq:220,phaseDeg:0,amp:2.2,x:1.0,y:1.5,sweepEnd:200,sweepDur:2,pulseWidth:4,pulseRepeat:0,t0:0,noiseState:0}];
+    state.listeners=[{id:1,active:true,x:3.0,y:1.5},{id:2,active:true,x:2.0,y:2.6}];
+    state.selectedListener=0;state.obstacles=[];state.panels=[];state.chartType='ir';
+  }},
+ {id:'sweep',name:'⑧ 扫频寻找共振峰',
+  desc:'20→200 Hz 扫频激励。在“频率响应/简化频谱”标签中观察与解析模态频率线（青色虚线）重合的共振峰。',
+  apply(){setMode('fdtd');state.Lx=4;state.Ly=3;state.Lz=2.5;state.c=343;
+    state.visualMode='pressure';setWalls(0,0,0,0);state.airAlpha=0.6;state.stepsPerFrame=30;
+    state.sources=[{id:1,active:true,type:'sweep',freq:20,phaseDeg:0,amp:1,x:0.8,y:0.6,sweepEnd:200,sweepDur:3,pulseWidth:5,pulseRepeat:0,t0:0,noiseState:0}];
+    state.listeners=[{id:1,active:true,x:2.3,y:1.6}];state.selectedListener=0;
+    state.obstacles=[];state.panels=[];state.chartType='spectrum';
+  }}
+];
+function setWalls(l,r,t,b){state.wallA.l=l;state.wallA.r=r;state.wallA.t=t;state.wallA.b=b;}
+function setMode(m){
+  state.mode=m;
+  $('modeFDTD').classList.toggle('on',m==='fdtd');
+  $('modeModal').classList.toggle('on',m==='modal');
+  updateBadge();
+}
+function applyPreset(id){
+  const pre=PRESETS.find(p=>p.id===id); if(!pre)return;
+  pre.apply();
+  syncUIFromState();
+  initFDTD();
+  renderModeList(); renderSchroeder(); renderLists(); updateBadge();
+  $('presetSelect').value=id;
+  $('presetDesc').textContent=pre.desc;
+  state.running=true; $('runBtn').textContent='运行中'; $('runBtn').classList.add('on'); $('runBtn').classList.remove('stop');
+  stopAudio();
+  drawMain(); drawChart(true);
+}
+
+/* ---------------- UI 同步 / 动态列表 ---------------- */
+function syncUIFromState(){
+  $('roomLx').value=state.Lx; $('roomLy').value=state.Ly; $('roomLz').value=state.Lz;
+  $('roomC').value=state.c; $('roomRho').value=state.rho;
+  $('resSelect').value=String(state.dxBase);
+  $('cflSafety').value=state.cflSafety;
+  $('stepsPerFrame').value=state.stepsPerFrame;
+  $('airAlpha').value=state.alphaAir;
+  $('wallL').value=state.wallA.l; $('wallLV').textContent=fmt(state.wallA.l,2);
+  $('wallR').value=state.wallA.r; $('wallRV').textContent=fmt(state.wallA.r,2);
+  $('wallT').value=state.wallA.t; $('wallTV').textContent=fmt(state.wallA.t,2);
+  $('wallB').value=state.wallA.b; $('wallBV').textContent=fmt(state.wallA.b,2);
+  $('visualMode').value=state.visualMode;
+  $('zSlice').min=0; $('zSlice').max=state.Lz; $('zSlice').value=clamp(state.zSlice,0,state.Lz);
+  $('zSliceV').textContent=fmt(clamp(state.zSlice,0,state.Lz),2)+' m';
+  $('fmin').value=state.fmin; $('fmax').value=state.fmax;
+  $('panelAbs').value=state.panelAbs; $('panelAbsV').textContent=fmt(state.panelAbs,2);
+  document.querySelectorAll('[data-tool]').forEach(b=>b.classList.toggle('on',b.dataset.tool===state.tool));
+  document.querySelectorAll('[data-chart]').forEach(b=>b.classList.toggle('on',b.dataset.chart===state.chartType));
+  $('audioMuted').checked=audioState.muted;
+  $('audioVolume').value=audioState.volume; $('audioVolV').textContent=fmt(audioState.volume,2);
+  updateBadge();
+}
+function sourceCard(s,i){
+  const sweepExtra=(s.type==='sweep')?`
+    <div class="r">
+      <div><label class="mini">扫频到 f1 (Hz)</label><input type="number" step="1" min="1" value="${s.sweepEnd}" onchange="updateSource(${i},'sweepEnd',this.value)"></div>
+      <div><label class="mini">扫频时长 (s)</label><input type="number" step="0.1" min="0.2" value="${s.sweepDur}" onchange="updateSource(${i},'sweepDur',this.value)"></div>
+    </div>`:'';
+  const pulseExtra=(s.type==='pulse')?`
+    <div class="r">
+      <div><label class="mini">脉冲周期数</label><input type="number" step="0.5" min="0.5" value="${s.pulseWidth}" onchange="updateSource(${i},'pulseWidth',this.value)"></div>
+      <div><label class="mini">重复周期 s（0=单次）</label><input type="number" step="0.1" min="0" value="${s.pulseRepeat}" onchange="updateSource(${i},'pulseRepeat',this.value)"></div>
+    </div>`:'';
+  const typeName={sine:'连续正弦',pulse:'脉冲/猝发',sweep:'扫频',noise:'白噪声'}[s.type];
+  return `<div class="card" style="${s.active?'':'opacity:.55'}">
+    <div class="r">
+      <div class="w40"><label class="mini">启用</label><input type="checkbox" ${s.active?'checked':''} onchange="updateSource(${i},'active',this.checked)"></div>
+      <div><label class="mini">类型：${typeName}</label>
+        <select onchange="updateSource(${i},'type',this.value)">
+          <option value="sine" ${s.type==='sine'?'selected':''}>连续正弦</option>
+          <option value="pulse" ${s.type==='pulse'?'selected':''}>脉冲</option>
+          <option value="sweep" ${s.type==='sweep'?'selected':''}>扫频</option>
+          <option value="noise" ${s.type==='noise'?'selected':''}>白噪声</option>
+        </select>
+      </div>
+      <div class="w40"><button class="btn" style="padding:3px 6px" onclick="deleteSource(${i})">删</button></div>
+    </div>
+    <div class="r">
+      <div><label class="mini">f / f0 (Hz)</label><input type="number" step="0.1" min="1" value="${s.freq}" onchange="updateSource(${i},'freq',this.value)"></div>
+      <div><label class="mini">相位 (°)</label><input type="number" step="1" value="${s.phaseDeg}" onchange="updateSource(${i},'phaseDeg',this.value)"></div>
+      <div><label class="mini">幅度</label><input type="number" step="0.1" min="0" value="${s.amp}" onchange="updateSource(${i},'amp',this.value)"></div>
+    </div>
+    <div class="r">
+      <div><label class="mini">x (m)</label><input type="number" step="0.05" min="0" value="${fmt(s.x,2)}" onchange="updateSource(${i},'x',this.value)"></div>
+      <div><label class="mini">y (m)</label><input type="number" step="0.05" min="0" value="${fmt(s.y,2)}" onchange="updateSource(${i},'y',this.value)"></div>
+    </div>
+    ${sweepExtra}${pulseExtra}
+    <div class="mini">画布上直接拖动声源也可改位置。</div>
+  </div>`;
+}
+function listenerCard(l,i){
+  return `<div class="card" style="${l.active?'':'opacity:.55'}">
+    <div class="r">
+      <div class="w40"><label class="mini">选中</label><input type="radio" name="selLis" ${i===state.selectedListener?'checked':''} onchange="selectListener(${i})"></div>
+      <div class="w40"><label class="mini">启用</label><input type="checkbox" ${l.active?'checked':''} onchange="updateListener(${i},'active',this.checked)"></div>
+      <div><label class="mini">监听点 #${i+1}</label></div>
+      <div class="w40"><button class="btn" style="padding:3px 6px" onclick="deleteListener(${i})">删</button></div>
+    </div>
+    <div class="r">
+      <div><label class="mini">x (m)</label><input type="number" step="0.05" min="0" value="${fmt(l.x,2)}" onchange="updateListener(${i},'x',this.value)"></div>
+      <div><label class="mini">y (m)</label><input type="number" step="0.05" min="0" value="${fmt(l.y,2)}" onchange="updateListener(${i},'y',this.value)"></div>
+    </div>
+    <div class="mini">波形 = FDTD 场值双线性插值，非预置振荡器。</div>
+  </div>`;
+}
+function renderLists(){
+  $('srcList').innerHTML=state.sources.map((s,i)=>sourceCard(s,i)).join('');
+  $('lisList').innerHTML=state.listeners.map((l,i)=>listenerCard(l,i)).join('');
+  let obj='';
+  state.obstacles.forEach((o,i)=>{obj+=`<div class="objitem">刚性墙/障碍 ${i+1}：x ${fmt(Math.min(o.x0,o.x1),2)}~${fmt(Math.max(o.x0,o.x1),2)}，y ${fmt(Math.min(o.y0,o.y1),2)}~${fmt(Math.max(o.y0,o.y1),2)} <button onclick="deleteObject('obstacle',${i})">删</button></div>`;});
+  state.panels.forEach((p,i)=>{obj+=`<div class="objitem">吸声板 ${i+1}：α=${fmt(p.a,2)} <button onclick="deleteObject('panel',${i})">删</button></div>`;});
+  $('objList').innerHTML=obj||'<div style="color:#5d7383;font-size:11px">尚未绘制物体。选择“绘制障碍物/吸声板”后在房间内拖拽。</div>';
+}
+function selectListener(i){
+  if(!state.listeners[i])return;
+  const prev=state.selectedListener;
+  state.selectedListener=i;
+  renderLists();
+  drawMain(); drawChart(true);
+  if(audioState.playing && prev!==i && !audioState.muted){
+    generateAudioPreview(true);
+  }
+}
+window.updateSource=function(i,key,val){
+  const s=state.sources[i]; if(!s)return;
+  if(key==='active')s.active=!!val;
+  else if(key==='type'){
+    s.type=val;
+    if(val==='pulse'&&fd){
+      s.t0=simTime;
+      fd.irPending=true; fd.irPos=0;
+      state.listeners.forEach(l=>{l.irCount=0; if(l.ir)l.ir.fill(0);});
+    }else if(fd&&!state.sources.some(q=>q.type==='pulse'&&q.active)){
+      fd.irPending=false;
+    }
+  }
+  else{s[key]=Number(val);}
+  renderLists();
+};
+window.updateListener=function(i,key,val){
+  const l=state.listeners[i]; if(!l)return;
+  if(key==='active')l.active=!!val; else l[key]=Number(val);
+  renderLists();
+};
+window.deleteSource=function(i){
+  if(state.sources.length<=1){setStatus('至少保留一个声源。','warn');return;}
+  state.sources.splice(i,1);stopAudio(false);renderLists();drawMain();
+};
+window.deleteListener=function(i){
+  if(state.listeners.length<=1){setStatus('至少保留一个监听点。','warn');return;}
+  state.listeners.splice(i,1);
+  state.selectedListener=clamp(state.selectedListener,0,state.listeners.length-1);
+  stopAudio(false);renderLists();drawMain();
+};
+window.deleteObject=function(kind,i){
+  if(kind==='obstacle')state.obstacles.splice(i,1); else state.panels.splice(i,1);
+  recomputeFlags();renderLists();drawMain();
+};
+function addSource(){
+  if(state.sources.length>=6){setStatus('最多 6 个声源。','warn');return;}
+  const id=Math.max(0,...state.sources.map(s=>s.id))+1;
+  state.sources.push({id,active:true,type:'sine',freq:80,phaseDeg:0,amp:1,x:state.Lx*0.25,y:state.Ly*0.5,
+    sweepEnd:200,sweepDur:2,pulseWidth:5,pulseRepeat:0,t0:0,noiseState:0});
+  renderLists();drawMain();
+}
+function addListener(){
+  if(state.listeners.length>=6){setStatus('最多 6 个监听点。','warn');return;}
+  const id=Math.max(0,...state.listeners.map(l=>l.id))+1;
+  state.listeners.push({id,active:true,x:state.Lx*0.6,y:state.Ly*0.5});
+  renderLists();drawMain();
+}
+function findUniformPosition(){
+  if(!fd){return;}
+  const nx=fd.Nx,ny=fd.Ny,solid=fd.solid,rms=fd.rms;
+  let rmsMax=0;
+  for(let i=0;i<rms.length;i++)if(!solid[i]&&rms[i]>rmsMax)rmsMax=rms[i];
+  if(rmsMax<1e-8){setStatus('声压场尚未建立，请先运行 FDTD。','warn');return;}
+  let best=null,bestScore=Infinity;
+  for(let j=2;j<ny-2;j++)for(let i=2;i<nx-2;i++){
+    const idx=i+j*nx; if(solid[idx])continue;
+    const mean=rms[idx];
+    if(mean<0.05*rmsMax)continue;
+    let sum=0,sum2=0,n=0,valid=true;
+    for(let dj=-2;dj<=2;dj++)for(let di=-2;di<=2;di++){
+      const ii=i+di,jj=j+dj;
+      if(ii<0||ii>=nx||jj<0||jj>=ny||solid[ii+jj*nx]){valid=false;break;}
+      const v=rms[ii+jj*nx]; sum+=v;sum2+=v*v;n++;
+    }
+    if(!valid)continue;
+    const m=sum/n, cv=Math.sqrt(Math.max(0,sum2/n-m*m))/Math.max(m,1e-12);
+    if(cv<bestScore){bestScore=cv;best={i,j};}
+  }
+  if(!best){setStatus('未找到合适位置。','warn');return;}
+  const x=(best.i+0.5)*fd.dx, y=(best.j+0.5)*fd.dy;
+  const lis=state.listeners[state.selectedListener];
+  if(!lis)return;
+  lis.x=x;lis.y=y;
+  renderLists();drawMain();
+  setStatus(`已把监听点移到局部 RMS 最均匀位置 (${fmt(x,2)}, ${fmt(y,2)})，空间变异系数=${fmt(bestScore*100,1)}%。`,'ok');
+}
+
+/* ---------------- 主画布绘制 ---------------- */
+const mainCanvas=$('mainCanvas');
+const mainCtx=mainCanvas.getContext('2d');
+let tempFieldCanvas=document.createElement('canvas');
+let lastProbe=null;
+
+function canvasGeom(){
+  const box=$('canvasBox');
+  const W=box.clientWidth, H=box.clientHeight;
+  const dpr=window.devicePixelRatio||1;
+  if(mainCanvas.width!==Math.round(W*dpr)||mainCanvas.height!==Math.round(H*dpr)){
+    mainCanvas.width=Math.round(W*dpr); mainCanvas.height=Math.round(H*dpr);
+  }
+  const margin=30;
+  const scale=Math.min((W-2*margin)/state.Lx,(H-2*margin)/state.Ly);
+  const ox=(W-state.Lx*scale)/2, oy=(H-state.Ly*scale)/2;
+  return {W,H,dpr,scale,ox,oy};
+}
+function physToPix(x,y,g){
+  return {x:g.ox+x*g.scale, y:g.oy+y*g.scale};
+}
+function pixToPhys(px,py,g){
+  return {x:clamp((px-g.ox)/g.scale,0,state.Lx), y:clamp((py-g.oy)/g.scale,0,state.Ly)};
+}
+function mix3(a,b,t){return [lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)];}
+const C_NEG=[30,90,220], C_MID=[238,242,244], C_POS=[215,45,50];
+function pressureColor(v,norm){
+  const t=clamp(v/norm,-1,1);
+  if(t<0)return mix3(C_MID,C_NEG,-t);
+  return mix3(C_MID,C_POS,t);
+}
+function dualColor(v,norm){
+  if(v>norm*0.12)return [235,55,55];
+  if(v<-norm*0.12)return [50,110,235];
+  const t=v/Math.max(norm*0.12,1e-9);
+  const s=clamp(1-Math.abs(t)*0.5,0,1);
+  return [230*s,235*s,240*s];
+}
+function rmsColor(v01){
+  v01=clamp(v01,0,1);
+  const stops=[[10,14,24],[40,34,90],[180,70,60],[250,175,60],[250,245,220]];
+  const x=v01*(stops.length-1); const i=Math.min(stops.length-2,Math.floor(x));
+  return mix3(stops[i],stops[i+1],x-i);
+}
+function energyColor(v01){
+  v01=clamp(v01,0,1);
+  const stops=[[8,12,20],[20,45,90],[30,140,130],[140,210,80],[255,230,110]];
+  const x=v01*(stops.length-1); const i=Math.min(stops.length-2,Math.floor(x));
+  return mix3(stops[i],stops[i+1],x-i);
+}
+function modeColor(v01){
+  const t=clamp(v01*1.2,-1,1);
+  if(t<0)return mix3(C_MID,C_NEG,-t);
+  return mix3(C_MID,C_POS,t);
+}
+
+function drawFieldImage(ctx,data,nx,ny,colorFn,g){
+  if(tempFieldCanvas.width!==nx||tempFieldCanvas.height!==ny){
+    tempFieldCanvas.width=nx; tempFieldCanvas.height=ny;
+  }
+  const tctx=tempFieldCanvas.getContext('2d');
+  const img=tctx.createImageData(nx,ny);
+  const px=img.data;
+  for(let j=0;j<ny;j++){
+    for(let i=0;i<nx;i++){
+      const idx=i+j*nx;
+      const col=colorFn(data[idx]);
+      const o=idx*4;
+      px[o]=col[0]; px[o+1]=col[1]; px[o+2]=col[2]; px[o+3]=255;
+    }
+  }
+  tctx.putImageData(img,0,0);
+  ctx.save();
+  ctx.imageSmoothingEnabled=true;
+  ctx.drawImage(tempFieldCanvas,g.ox,g.oy,state.Lx*g.scale,state.Ly*g.scale);
+  ctx.restore();
+}
+function analyticFieldData(){
+  const m=selectedModal()||modalModes[0]||{nx:1,ny:0,nz:0};
+  const nx=Math.max(60,Math.min(220,Math.round(state.Lx/state.dxBase)));
+  const ny=Math.max(40,Math.min(220,Math.round(state.Ly/state.dxBase)));
+  const data=new Float32Array(nx*ny);
+  let max=1e-9;
+  const z=clamp(state.zSlice,0,state.Lz);
+  for(let j=0;j<ny;j++){
+    const y=(j+0.5)*state.Ly/ny;
+    for(let i=0;i<nx;i++){
+      const x=(i+0.5)*state.Lx/nx;
+      const v=modeShape(m.nx,m.ny,m.nz,x,y,z);
+      data[i+j*nx]=v;
+      const a=Math.abs(v); if(a>max)max=a;
+    }
+  }
+  if(max>1e-9)for(let i=0;i<data.length;i++)data[i]/=max;
+  return {data,nx,ny,zFactor:modeShape(m.nx,m.ny,m.nz,state.Lx*0.2,state.Ly*0.2,z),m};
+}
+function drawAnalyticField(ctx,g){
+  const {data,nx,ny,zFactor,m}=analyticFieldData();
+  drawFieldImage(ctx,data,nx,ny,(v)=>{
+    if(Math.abs(v)<0.045)return [15,22,30];
+    return modeColor(v);
+  },g);
+  if(Math.abs(zFactor)<0.02){
+    ctx.fillStyle='rgba(255,180,80,.9)';
+    ctx.font='12px sans-serif';
+    ctx.fillText('该模态在此 z 切片为节点平面：cos(nzπz/Lz)≈0，请调整 z 切片',g.ox+10,g.oy+20);
+  }
+}
+function drawFDTDField(ctx,g){
+  if(!fd)return;
+  const mode=state.visualMode;
+  const nx=fd.Nx,ny=fd.Ny;
+  if(mode==='modeShape'){
+    drawAnalyticField(ctx,g);
+    return;
+  }
+  if(mode==='pressure'||mode==='dual'){
+    let max=1e-9;
+    for(let i=0;i<fd.p.length;i++){
+      const a=Math.abs(fd.p[i]); if(a>max)max=a;
+    }
+    if(mode==='dual')drawFieldImage(ctx,fd.p,nx,ny,(v)=>dualColor(v,max),g);
+    else drawFieldImage(ctx,fd.p,nx,ny,(v)=>pressureColor(v,max),g);
+  }else if(mode==='rms'||mode==='nodes'){
+    let max=1e-9;
+    for(let i=0;i<fd.rms.length;i++)if(!fd.solid[i]&&fd.rms[i]>max)max=fd.rms[i];
+    if(mode==='rms'){
+      drawFieldImage(ctx,fd.rms,nx,ny,(v)=>rmsColor(Math.sqrt(v/Math.max(max,1e-9))),g);
+    }else{
+      const sq=new Float32Array(fd.rms.length);
+      for(let i=0;i<fd.rms.length;i++)sq[i]=Math.sqrt(fd.rms[i]/Math.max(max,1e-9));
+      drawFieldImage(ctx,sq,nx,ny,(v)=>{
+        if(v<0.06)return [12,26,44];
+        const b=clamp(v*1.7,0,1);
+        return [18+b*30,18+b*22,24+b*18];
+      },g);
+      ctx.save();
+      ctx.strokeStyle='rgba(255,200,80,.85)'; ctx.fillStyle='rgba(255,210,90,.9)';
+      for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){
+        const idx=i+j*nx;
+        if(fd.solid[idx])continue;
+        const v=sq[idx];
+        if(v<0.62)continue;
+        let isMax=true;
+        for(let dj=-1;dj<=1&&isMax;dj++)for(let di=-1;di<=1;di++){
+          if(!di&&!dj)continue;
+          const ii=i+di,jj=j+dj;
+          if(ii<0||ii>=nx||jj<0||jj>=ny)continue;
+          if(sq[ii+jj*nx]>v){isMax=false;break;}
+        }
+        if(isMax){
+          const x=(i+0.5)*fd.dx, y=(j+0.5)*fd.dy;
+          const pp=physToPix(x,y,g);
+          ctx.beginPath(); ctx.arc(pp.x,pp.y,Math.max(2,2*g.scale*fd.dx),0,Math.PI*2); ctx.fill();
+        }
+      }
+      ctx.restore();
+    }
+  }else if(mode==='energy'){
+    const e=new Float32Array(nx*ny);
+    let max=1e-12;
+    for(let idx=0;idx<nx*ny;idx++){
+      if(fd.solid[idx])continue;
+      const v=0.5*state.rho*(fd.u[idx]*fd.u[idx]+fd.v[idx]*fd.v[idx]) + 0.5/(state.rho*state.c*state.c)*fd.p[idx]*fd.p[idx];
+      e[idx]=v; if(v>max)max=v;
+    }
+    drawFieldImage(ctx,e,nx,ny,(v)=>energyColor(Math.log(1+v/Math.max(max,1e-9))/Math.log(2)),g);
+  }
+}
+function drawOverlays(ctx,g){
+  const {scale}=g;
+  ctx.save();
+  ctx.strokeStyle='#9fb8c8'; ctx.lineWidth=1.5;
+  ctx.strokeRect(g.ox,g.oy,state.Lx*scale,state.Ly*scale);
+  if(fd&&fd.Nx<=70){
+    ctx.strokeStyle='rgba(110,140,160,.12)'; ctx.lineWidth=.5;
+    for(let i=1;i<fd.Nx;i++){
+      const x=g.ox+i*fd.dx*scale;
+      ctx.beginPath(); ctx.moveTo(x,g.oy); ctx.lineTo(x,g.oy+state.Ly*scale); ctx.stroke();
+    }
+    for(let j=1;j<fd.Ny;j++){
+      const y=g.oy+j*fd.dy*scale;
+      ctx.beginPath(); ctx.moveTo(g.ox,y); ctx.lineTo(g.ox+state.Lx*scale,y); ctx.stroke();
+    }
+  }
+  for(const ob of state.obstacles){
+    const x0=Math.min(ob.x0,ob.x1)*scale+g.ox, y0=Math.min(ob.y0,ob.y1)*scale+g.oy;
+    const w=Math.abs(ob.x1-ob.x0)*scale, h=Math.abs(ob.y1-ob.y0)*scale;
+    ctx.fillStyle='rgba(12,16,22,.92)'; ctx.fillRect(x0,y0,w,h);
+    ctx.strokeStyle='#667c8d'; ctx.setLineDash([4,3]); ctx.strokeRect(x0,y0,w,h); ctx.setLineDash([]);
+  }
+  for(const pa of state.panels){
+    const x0=Math.min(pa.x0,pa.x1)*scale+g.ox, y0=Math.min(pa.y0,pa.y1)*scale+g.oy;
+    const w=Math.abs(pa.x1-pa.x0)*scale, h=Math.abs(pa.y1-pa.y0)*scale;
+    ctx.fillStyle='rgba(35,180,110,.25)'; ctx.fillRect(x0,y0,w,h);
+    ctx.strokeStyle='rgba(90,240,160,.8)'; ctx.setLineDash([4,3]); ctx.strokeRect(x0,y0,w,h); ctx.setLineDash([]);
+  }
+  if(drawState){
+    const x0=Math.min(drawState.x0,drawState.x1)*scale+g.ox, y0=Math.min(drawState.y0,drawState.y1)*scale+g.oy;
+    const w=Math.abs(drawState.x1-drawState.x0)*scale, h=Math.abs(drawState.y1-drawState.y0)*scale;
+    ctx.strokeStyle=state.tool==='panel'?'#5cf0a8':'#cfd8df'; ctx.setLineDash([5,4]);
+    ctx.lineWidth=1.5; ctx.strokeRect(x0,y0,w,h); ctx.setLineDash([]);
+  }
+  state.sources.forEach((s,i)=>{
+    const pp=physToPix(clamp(s.x,0,state.Lx),clamp(s.y,0,state.Ly),g);
+    ctx.globalAlpha=s.active?1:0.3;
+    ctx.fillStyle=i===0?'#ffb454':'#ff8a5c';
+    ctx.beginPath(); ctx.arc(pp.x,pp.y,9*Math.min(1,scale/25+0.5),0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle='#1a1410'; ctx.lineWidth=1; ctx.stroke();
+    ctx.fillStyle='#241505';
+    ctx.beginPath(); ctx.moveTo(pp.x-3,pp.y-2); ctx.lineTo(pp.x+3,pp.y-3); ctx.lineTo(pp.x+2,pp.y+3); ctx.closePath(); ctx.fill();
+    ctx.fillStyle='#ffe1bd'; ctx.font='10px sans-serif';
+    ctx.fillText('S'+(i+1),pp.x-10,pp.y-12);
+    if(s.type==='sine'||s.type==='pulse')ctx.fillText(s.phaseDeg+'°',pp.x-10,pp.y+18);
+    ctx.globalAlpha=1;
+  });
+  state.listeners.forEach((l,i)=>{
+    const pp=physToPix(clamp(l.x,0,state.Lx),clamp(l.y,0,state.Ly),g);
+    ctx.globalAlpha=l.active?1:0.3;
+    ctx.fillStyle=i===state.selectedListener?'#5fd0ff':'#9fb8c8';
+    ctx.beginPath(); ctx.arc(pp.x,pp.y,8,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle='#0c1820'; ctx.stroke();
+    ctx.fillStyle='#0c1820';
+    ctx.fillRect(pp.x-2.5,pp.y-6,5,9);
+    ctx.beginPath(); ctx.arc(pp.x,pp.y-7,3,0,Math.PI*2); ctx.fill();
+    if(i===state.selectedListener){ctx.strokeStyle='#8fe4ff';ctx.setLineDash([3,3]);ctx.beginPath();ctx.arc(pp.x,pp.y,11,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);}
+    ctx.fillStyle='#dff2ff'; ctx.font='10px sans-serif'; ctx.fillText('M'+(i+1),pp.x+10,pp.y-8);
+    ctx.globalAlpha=1;
+  });
+  if(lastProbe){
+    const pp=physToPix(lastProbe.x,lastProbe.y,g);
+    ctx.strokeStyle='rgba(255,255,255,.85)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pp.x-5,pp.y); ctx.lineTo(pp.x+5,pp.y); ctx.moveTo(pp.x,pp.y-5); ctx.lineTo(pp.x,pp.y+5); ctx.stroke();
+  }
+  ctx.restore();
+}
+function updateBadge(){
+  const names={pressure:'瞬时声压场（红=正压，蓝=负压）',dual:'正负声压双色图',rms:'声压 RMS 分布',nodes:'节点与腹点',energy:'能量密度',modeShape:'解析房间模态形状'};
+  const m=selectedModal();
+  const modalExtra=(state.mode==='modal'||state.visualMode==='modeShape')&&m?`\n模态 (${m.nx},${m.ny},${m.nz}) @ ${fmt(m.f,1)} Hz`:'';
+  $('canvasBadge').textContent=(state.mode==='modal'?'解析模态模式 · 点击列表切换模态':'FDTD 波动模式 · '+names[state.visualMode])+modalExtra;
+}
+function drawMain(){
+  const g=canvasGeom();
+  mainCtx.setTransform(g.dpr,0,0,g.dpr,0,0);
+  mainCtx.fillStyle='#080c11'; mainCtx.fillRect(0,0,g.W,g.H);
+  if(state.mode==='modal'){
+    drawAnalyticField(mainCtx,g);
+  }else{
+    drawFDTDField(mainCtx,g);
+  }
+  drawOverlays(mainCtx,g);
+}
+
+/* ---------------- 画布交互 ---------------- */
+function hitTest(px,py,g){
+  let best=null,bestD=16;
+  state.sources.forEach((s,i)=>{
+    const pp=physToPix(clamp(s.x,0,state.Lx),clamp(s.y,0,state.Ly),g);
+    const d=Math.hypot(px-pp.x,py-pp.y);
+    if(d<bestD){bestD=d;best={kind:'source',index:i};}
+  });
+  state.listeners.forEach((l,i)=>{
+    const pp=physToPix(clamp(l.x,0,state.Lx),clamp(l.y,0,state.Ly),g);
+    const d=Math.hypot(px-pp.x,py-pp.y);
+    if(d<bestD){bestD=d;best={kind:'listener',index:i};}
+  });
+  return best;
+}
+mainCanvas.addEventListener('pointerdown',e=>{
+  const rect=mainCanvas.getBoundingClientRect();
+  const g=canvasGeom();
+  const px=e.clientX-rect.left, py=e.clientY-rect.top;
+  const phys=pixToPhys(px,py,g);
+  try{mainCanvas.setPointerCapture(e.pointerId);}catch(err){}
+  if(state.tool==='select'){
+    const hit=hitTest(px,py,g);
+    if(hit){dragState=hit;}
+    else probeAt(phys.x,phys.y);
+  }else if(state.tool==='obstacle'||state.tool==='panel'){
+    drawState={x0:phys.x,y0:phys.y,x1:phys.x,y1:phys.y};
+  }else if(state.tool==='erase'){
+    drawState={x0:phys.x,y0:phys.y,x1:phys.x,y1:phys.y};
+  }
+});
+mainCanvas.addEventListener('pointermove',e=>{
+  if(!dragState&&!drawState)return;
+  const rect=mainCanvas.getBoundingClientRect();
+  const g=canvasGeom();
+  const phys=pixToPhys(e.clientX-rect.left,e.clientY-rect.top,g);
+  if(dragState){
+    if(dragState.kind==='source'){
+      const s=state.sources[dragState.index]; if(s){s.x=phys.x;s.y=phys.y;}
+    }else{
+      const l=state.listeners[dragState.index]; if(l){l.x=phys.x;l.y=phys.y;}
+    }
+    renderLists();
+  }else if(drawState){
+    drawState.x1=phys.x; drawState.y1=phys.y;
+  }
+});
+mainCanvas.addEventListener('pointerup',e=>{
+  const rect=mainCanvas.getBoundingClientRect();
+  const g=canvasGeom();
+  const phys=pixToPhys(e.clientX-rect.left,e.clientY-rect.top,g);
+  if(dragState){
+    if(dragState.kind==='source'){
+      const s=state.sources[dragState.index];
+      if(s){s.x=phys.x;s.y=phys.y;}
+    }else{
+      const l=state.listeners[dragState.index];
+      if(l){l.x=phys.x;l.y=phys.y;}
+    }
+    dragState=null; renderLists();
+  }else if(drawState){
+    drawState.x1=phys.x; drawState.y1=phys.y;
+    const w=Math.abs(drawState.x1-drawState.x0), h=Math.abs(drawState.y1-drawState.y0);
+    const r={x0:drawState.x0,y0:drawState.y0,x1:drawState.x1,y1:drawState.y1};
+    if(state.tool==='erase'){
+      let removed=0;
+      for(let i=state.obstacles.length-1;i>=0;i--){
+        const o=state.obstacles[i];
+        if(rectsIntersect(r,{x0:Math.min(o.x0,o.x1),y0:Math.min(o.y0,o.y1),x1:Math.max(o.x0,o.x1),y1:Math.max(o.y0,o.y1)})){state.obstacles.splice(i,1);removed++;}
+      }
+      for(let i=state.panels.length-1;i>=0;i--){
+        const p=state.panels[i];
+        if(rectsIntersect(r,{x0:Math.min(p.x0,p.x1),y0:Math.min(p.y0,p.y1),x1:Math.max(p.x0,p.x1),y1:Math.max(p.y0,p.y1)})){state.panels.splice(i,1);removed++;}
+      }
+      if(removed){recomputeFlags();renderLists();setStatus(`已擦除 ${removed} 个物体。`,'ok');}
+    }else{
+      const minCell=fd?Math.min(fd.dx,fd.dy)*1.2:0.04;
+      if(w>minCell||h>minCell){
+        if(state.tool==='obstacle'){state.obstacles.push(r);setStatus(`已添加刚性障碍物 ${fmt(w,2)}×${fmt(h,2)} m。`,'ok');}
+        else{state.panels.push({...r,a:state.panelAbs});setStatus(`已添加吸声板 α=${fmt(state.panelAbs,2)}。`,'ok');}
+        recomputeFlags();renderLists();
+      }
+    }
+    drawState=null;
+  }
+});
+function rectsIntersect(a,b){
+  return Math.min(a.x1,a.x0)<=Math.max(b.x1,b.x0) && Math.max(a.x1,a.x0)>=Math.min(b.x1,b.x0) &&
+         Math.min(a.y1,a.y0)<=Math.max(b.y1,b.y0) && Math.max(a.y1,a.y0)>=Math.min(b.y1,b.y0);
+}
+function probeAt(x,y){
+  lastProbe={x,y};
+  let txt;
+  if(state.mode==='modal'){
+    const m=selectedModal();
+    if(m){
+      const v=modeShape(m.nx,m.ny,m.nz,x,y,clamp(state.zSlice,0,state.Lz));
+      txt=`模态 (${m.nx},${m.ny},${m.nz})：(${fmt(x,2)}, ${fmt(y,2)}) 归一化声压 = ${fmt(v,3)}`;
+    }else txt=`(${fmt(x,2)}, ${fmt(y,2)})`;
+  }else if(fd){
+    const p=bilinearPressure(x,y);
+    const gx=clamp(x/fd.dx-0.5,0,fd.Nx-1.001), gy=clamp(y/fd.dy-0.5,0,fd.Ny-1.001);
+    const idx=Math.floor(gx)+Math.floor(gy)*fd.Nx;
+    const rms=fd.solid[idx]?0:Math.sqrt(fd.rms[idx]);
+    txt=`(${fmt(x,2)}, ${fmt(y,2)}) 瞬时 p = ${fmt(p,3)}，局部 RMS = ${fmt(rms,3)}`;
+  }else txt=`(${fmt(x,2)}, ${fmt(y,2)})`;
+  $('mouseChip').innerHTML=txt;
+}
+
+/* ---------------- 状态 / CFL 信息 ---------------- */
+function setStatus(msg,cls){
+  const el=$('runChip');
+  el.textContent=msg||'';
+  el.className='chip '+(cls||'');
+}
+function updateFDTDInfo(){
+  if(!fd)return;
+  const dtCFL=1/(state.c*Math.sqrt(1/(fd.dx*fd.dx)+1/(fd.dy*fd.dy)));
+  const s=fd.safety;
+  const ok=s<1;
+  $('cflChip').innerHTML=`CFL：dt=${fmt(fd.dt*1e6,1)} µs ≤ ${fmt(dtCFL*1e6,1)} µs（s=${fmt(s,2)}）`;
+  $('cflChip').className='chip '+(ok?'ok':'err');
+  $('cflInfo').innerHTML=`<b>FDTD 方程</b>：∂²p/∂t² = c²∇²p − α·∂p/∂t + s<br><b>CFL 稳定条件（2D 显式 FDTD）</b><br>
+    dt ≤ 1 / [ c·√(1/dx² + 1/dy²) ]${fd.dx===fd.dy?` = dx/(c√2)`:`（dx=${fmt(fd.dx,3)} m, dy=${fmt(fd.dy,3)} m）`}<br>
+    理论最大 dt<sub>CFL</sub> = ${fmt(dtCFL*1e6,1)} µs；实际采用 <b>dt = ${fmt(fd.dt*1e6,1)} µs</b>（自动乘安全系数 s=${fmt(s,2)}）。<br>
+    <span class="${ok?'ok':'err'}">${ok?'✓ 稳定，允许运行。时间步会随 c、dx、dy 或 s 变化自动重算。':'✗ CFL 不满足，已禁止时间推进。请减小安全系数或增大网格。'}</span>
+    <div style="margin-top:4px;color:#8aa0b0">墙边界采用一阶阻抗边界：∂p/∂n=-(ρ/Z)·∂p/∂t，α=0 退化为刚性 ∂p/∂n=0；α=1 为法向无反射（Z=ρc）。</div>`;
+  $('simInfo').innerHTML=`网格 ${fd.Nx}×${fd.Ny}（${fmt(fd.Nx*fd.Ny/1000,1)}k 格）· 仿真采样率 fs=${fmt(1/fd.dt,0)} Hz<br>
+    视觉时间步 = ${fmt(fd.dt*state.stepsPerFrame*1000,2)} ms/帧；若按 60 fps，视觉慢动作约 1:${fmt((1/60)/(fd.dt*state.stepsPerFrame),0)}（真实 1 s ≈ 视觉 ${fmt(fd.dt*state.stepsPerFrame*60,1)} s）。<br>
+    <span style="color:#8aa0b0">FDTD 求解 2D 水平切片波动方程；Lz 用于解析 3D 模态列表、Schroeder 频率与混响时间估计。</span>`;
+}
+function updateStatusBar(){
+  if(fd){
+    $('timeChip').innerHTML=`视觉时间：${fmt(simTime,3)} s（${stepCount} 步）`;
+    const realPerFrame=1/60;
+    const simPerFrame=fd.dt*state.stepsPerFrame;
+    $('slowChip').innerHTML=`慢动作：1 帧视觉 ${fmt(simPerFrame*1000,2)} ms，约 1:${fmt(realPerFrame/Math.max(simPerFrame,1e-9),0)}`;
+    if(clampWarn)$('runChip').innerHTML='注意：刚性低损耗下振幅过大，已软限幅 ±80。';
+  }else{
+    $('timeChip').textContent='视觉时间：--';
+    $('slowChip').textContent='慢动作：--';
+  }
+}
+
+/* ---------------- 频谱 / 图表 ---------------- */
+const chartCanvas=$('chartCanvas');
+const chartCtx=chartCanvas.getContext('2d');
+function nextPow2(n){
+  let m=1; while(m<n)m*=2; return m;
+}
+function historyArray(lis,n){
+  if(!lis||!lis.hist||!lis.count)return new Float32Array(0);
+  const cap=lis.hist.length;
+  const use=Math.min(n,lis.count);
+  const out=new Float32Array(use);
+  for(let k=0;k<use;k++){
+    out[k]=lis.hist[(lis.head-use+k+cap)%cap];
+  }
+  return out;
+}
+function fftMagnitude(arr,n,fs){
+  const m=nextPow2(Math.min(n,arr.length));
+  if(m<16)return null;
+  const re=new Float32Array(m), im=new Float32Array(m);
+  const start=arr.length-m;
+  for(let i=0;i<m;i++){
+    const v=arr[start+i];
+    const w=0.5*(1-Math.cos(2*Math.PI*i/(m-1)));
+    re[i]=v*w;
+  }
+  for(let i=1,j=0;i<m;i++){
+    let bit=m>>1;
+    for(;j&bit;bit>>=1)j^=bit;
+    j^=bit;
+    if(i<j){const tr=re[i];re[i]=re[j];re[j]=tr;const ti=im[i];im[i]=im[j];im[j]=ti;}
+  }
+  for(let len=2;len<=m;len<<=1){
+    const ang=-2*Math.PI/len;
+    const wr=Math.cos(ang), wi=Math.sin(ang);
+    for(let i=0;i<m;i+=len){
+      let cr=1,ci=0;
+      for(let j=0;j<len/2;j++){
+        const a=i+j,b=i+j+len/2;
+        const tr=re[b]*cr-im[b]*ci;
+        const ti=re[b]*ci+im[b]*cr;
+        re[b]=re[a]-tr; im[b]=im[a]-ti;
+        re[a]+=tr; im[a]+=ti;
+        const ncr=cr*wr-ci*wi; ci=cr*wi+ci*wr; cr=ncr;
+      }
+    }
+  }
+  const half=m>>1;
+  const mag=new Float32Array(half), db=new Float32Array(half);
+  let max=1e-12;
+  for(let i=0;i<half;i++){
+    mag[i]=Math.hypot(re[i],im[i]);
+    if(mag[i]>max)max=mag[i];
+  }
+  for(let i=0;i<half;i++)db[i]=20*Math.log10(mag[i]/max+1e-9);
+  return {db,mag,n:m,fs,freq:i=>i*fs/m};
+}
+function findPeaks(db){
+  const peaks=[];
+  for(let i=2;i<db.length-2;i++){
+    if(db[i]>-48&&db[i]>=db[i-1]&&db[i]>=db[i+1]&&db[i]>db[i-2]&&db[i]>db[i+2])peaks.push(i);
+  }
+  peaks.sort((a,b)=>db[b]-db[a]);
+  const merged=[];
+  for(const p of peaks){
+    if(merged.length>=6)break;
+    let near=false;
+    for(const q of merged)if(Math.abs(p-q)<=3){near=true;break;}
+    if(!near)merged.push(p);
+  }
+  merged.sort((a,b)=>a-b);
+  return merged;
+}
+function drawAxes(ctx,W,H,opts){
+  ctx.strokeStyle='#27394a';ctx.fillStyle='#8aa0b0';ctx.font='10px sans-serif';
+  ctx.lineWidth=1;
+  ctx.strokeRect(opts.l,opts.t,opts.w,opts.h);
+  ctx.beginPath();ctx.moveTo(opts.l,opts.b);ctx.lineTo(opts.l+opts.w,opts.b);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(opts.l,opts.t);ctx.lineTo(opts.l,opts.b);ctx.stroke();
+  for(let i=0;i<=4;i++){
+    const x=opts.l+opts.w*i/4, y=opts.b-opts.h*i/4;
+    ctx.beginPath();ctx.moveTo(x,opts.b-3);ctx.lineTo(x,opts.b+3);ctx.stroke();
+    ctx.fillText(opts.xFmt(i),x-12,opts.b+12);
+    ctx.beginPath();ctx.moveTo(opts.l-3,y);ctx.lineTo(opts.l+3,y);ctx.stroke();
+    ctx.fillText(opts.yFmt(i),opts.l+4,y+3);
+  }
+}
+function drawModeLines(ctx,opts,xMax){
+  const modes=analytic2DModes(xMax);
+  ctx.save();
+  ctx.strokeStyle='rgba(90,200,255,.65)'; ctx.fillStyle='rgba(130,215,255,.8)';
+  ctx.setLineDash([3,3]); ctx.font='9px sans-serif';
+  let labeled=0;
+  for(const m of modes){
+    const x=opts.l+(m.f/xMax)*opts.w;
+    if(x>opts.l+opts.w)break;
+    ctx.beginPath();ctx.moveTo(x,opts.t);ctx.lineTo(x,opts.b);ctx.stroke();
+    if(labeled%2===0){ctx.save();ctx.translate(x,opts.t-2);ctx.rotate(-Math.PI/2);ctx.fillText(`${m.nx},${m.ny}`,0,0);ctx.restore();}
+    labeled++;
+  }
+  ctx.setLineDash([]);ctx.restore();
+}
+function selectedLis(){return state.listeners[state.selectedListener]||state.listeners[0];}
+function renderValidation(db,binHz,sourceTag){
+  const peaks=findPeaks(db);
+  if(!peaks.length){$('validationBox').innerHTML='<div class="audionote">峰值检测：暂无显著峰。运行时间更长或改用脉冲/扫频后再看。</div>';return;}
+  const modes=analytic2DModes(binHz*db.length);
+  let html=`<div style="font-size:10.5px;color:#8aa0b0;margin-top:4px">FDTD 谱峰 ↔ 解析模态（2D, nz=0）验证</div><table class="peaktable"><thead><tr><th>FDTD 峰</th><th>最近模态</th><th>f_mode</th><th>偏差</th></tr></thead><tbody>`;
+  for(const pi of peaks){
+    const f=pi*binHz;
+    let best=null,bd=1e9;
+    for(const m of modes){const d=Math.abs(m.f-f);if(d<bd){bd=d;best=m;}}
+    const pct=best?bd/best.f*100:0;
+    const ok=best&&bd<Math.max(3,best.f*0.04);
+    html+=`<tr><td>${fmt(f,1)} Hz</td><td>${best?`(${best.nx},${best.ny},0)`:'—'}</td><td>${best?fmt(best.f,1)+' Hz':'—'}</td>
+      <td style="color:${ok?'#4fd08a':'#ffb27d'}">${best?fmt(bd,1)+' Hz ('+fmt(pct,1)+'%)':'—'}</td></tr>`;
+  }
+  html+=`</tbody></table><div class="audionote">刚性边界下谱峰应落在解析模态线附近（青色虚线）。${sourceTag||''}</div>`;
+  $('validationBox').innerHTML=html;
+}
+function drawChart(force){
+  if(!fd){const el=$('chartInfo');if(el)el.textContent='等待 FDTD 初始化…';return;}
+  const wrap=chartCanvas.parentElement;
+  const W=wrap.clientWidth||300, H=150;
+  const dpr=window.devicePixelRatio||1;
+  if(chartCanvas.width!==Math.round(W*dpr)||chartCanvas.height!==Math.round(H*dpr)){
+    chartCanvas.width=Math.round(W*dpr); chartCanvas.height=Math.round(H*dpr);
+  }
+  chartCtx.setTransform(dpr,0,0,dpr,0,0);
+  chartCtx.fillStyle='#080d12'; chartCtx.fillRect(0,0,W,H);
+  const lis=selectedLis();
+  const info=$('chartInfo');
+  const type=state.chartType;
+  if(type==='wave'){
+    const arr=historyArray(lis,900);
+    if(!arr.length){info.innerHTML='时域波形：还没有 FDTD 样本。';return;}
+    let max=0; for(let i=0;i<arr.length;i++)max=Math.max(max,Math.abs(arr[i]));
+    max=Math.max(max,1e-9);
+    const opts={l:42,t:12,w:W-52,h:H-34,b:H-18,xFmt:i=>fmt((i/4)*arr.length*fd.dt,2)+'s',yFmt:i=>fmt((1-i/2)*max,2)};
+    drawAxes(chartCtx,W,H,opts);
+    chartCtx.strokeStyle='#5fd0ff';chartCtx.lineWidth=1.2;chartCtx.beginPath();
+    for(let i=0;i<arr.length;i++){
+      const x=opts.l+opts.w*i/(arr.length-1);
+      const y=opts.b-opts.h*((arr[i]/max)*0.5+0.5);
+      if(i===0)chartCtx.moveTo(x,y);else chartCtx.lineTo(x,y);
+    }
+    chartCtx.stroke();
+    chartCtx.strokeStyle='rgba(255,255,255,.25)';chartCtx.beginPath();
+    chartCtx.moveTo(opts.l,opts.b-opts.h/2);chartCtx.lineTo(opts.l+opts.w,opts.b-opts.h/2);chartCtx.stroke();
+    info.innerHTML=`<b>监听点时域波形</b>（来自 FDTD 场值双线性插值）：监听点 M${state.selectedListener+1} (${fmt(lis.x,2)},${fmt(lis.y,2)})，窗口 ${fmt(arr.length*fd.dt,2)} s。`;
+    return;
+  }
+  if(type==='ir'){
+    if(!lis||!lis.irCount){info.innerHTML='脉冲响应：暂无数据。请选择“脉冲”声源并点击“激发脉冲”。';return;}
+    const n=Math.min(lis.irCount,4096);
+    const arr=lis.ir.slice(0,n);
+    let max=0; for(let i=0;i<arr.length;i++)max=Math.max(max,Math.abs(arr[i]));
+    max=Math.max(max,1e-9);
+    const opts={l:42,t:12,w:W-52,h:H-34,b:H-18,xFmt:i=>fmt((i/4)*n*fd.dt,2)+'s',yFmt:i=>fmt((1-i/2)*max,2)};
+    drawAxes(chartCtx,W,H,opts);
+    chartCtx.strokeStyle='#ffca6e';chartCtx.lineWidth=1.2;chartCtx.beginPath();
+    for(let i=0;i<n;i++){
+      const x=opts.l+opts.w*i/(n-1);
+      const y=opts.b-opts.h*((arr[i]/max)*0.5+0.5);
+      if(i===0)chartCtx.moveTo(x,y);else chartCtx.lineTo(x,y);
+    }
+    chartCtx.stroke();
+    info.innerHTML=`<b>脉冲响应</b>：激发后 ${fmt(n*fd.dt,2)} s，采样率 ${fmt(1/fd.dt,0)} Hz。多次反射应表现为离散到达峰。`;
+    return;
+  }
+  const isFR=(type==='fr');
+  let arr;
+  if(isFR){
+    if(!lis||!lis.irCount||lis.irCount<32){info.innerHTML='频率响应：暂无脉冲响应。请先激发脉冲。';return;}
+    arr=lis.ir.slice(0,Math.min(lis.irCount,4096));
+  }else{
+    arr=historyArray(lis,4096);
+    if(arr.length<128){info.innerHTML='频谱：样本不足，正在积累 FDTD 波形。';return;}
+  }
+  const fft=fftMagnitude(arr,2048,1/fd.dt);
+  if(!fft){info.innerHTML='频谱：样本不足。';return;}
+  const xMax=Math.min(600,fft.fs*0.45);
+  const opts={l:42,t:12,w:W-52,h:H-34,b:H-18,
+    xFmt:i=>fmt(i/4*xMax,0)+'Hz',yFmt:i=>fmt(-i*20,0)+'dB'};
+  drawAxes(chartCtx,W,H,opts);
+  chartCtx.strokeStyle='rgba(110,150,180,.15)';
+  for(let i=1;i<=3;i++){
+    const y=opts.b-opts.h*i/4;
+    chartCtx.beginPath();chartCtx.moveTo(opts.l,y);chartCtx.lineTo(opts.l+opts.w,y);chartCtx.stroke();
+  }
+  drawModeLines(chartCtx,opts,xMax);
+  const maxIdx=Math.min(fft.db.length-1,Math.floor(xMax/fft.fs*fft.n));
+  chartCtx.strokeStyle=isFR?'#ffca6e':'#6fe0a0';chartCtx.lineWidth=1.3;chartCtx.beginPath();
+  for(let i=0;i<=maxIdx;i++){
+    const x=opts.l+opts.w*i/maxIdx;
+    const y=opts.b+opts.h*clamp(fft.db[i],-80,0)/80;
+    if(i===0)chartCtx.moveTo(x,y);else chartCtx.lineTo(x,y);
+  }
+  chartCtx.stroke();
+  const tag=isFR?'脉冲响应 FFT（归一化传递函数幅度）':'当前监听点波形 FFT（归一化）';
+  info.innerHTML=`<b>${isFR?'频率响应':'简化频谱'}</b>：M${state.selectedListener+1}，Δf=${fmt(fft.fs/fft.n,1)} Hz，显示 0~${fmt(xMax,0)} Hz。青色虚线=解析模态频率。`;
+  if(force||frameCount%15===0)renderValidation(fft.db,fft.fs/fft.n,tag);
+}
+
+/* ---------------- Web Audio 听觉预览（模态合成） ---------------- */
+function ensureAudioContext(){
+  if(!audioState.ctx){
+    const AC=window.AudioContext||window.webkitAudioContext;
+    if(AC)audioState.ctx=new AC();
+  }
+  if(audioState.ctx&&audioState.ctx.state==='suspended')audioState.ctx.resume();
+  return audioState.ctx;
+}
+function audioGammaWall(){
+  const s=calcSchroeder();
+  if(!isFinite(s.T60)||s.T60<=0)return 0;
+  return 6.9078/s.T60;
+}
+function makeAudioBuffer(len,sr){
+  try{return new AudioBuffer({length:Math.max(1,Math.round(len)),sampleRate:sr,numberOfChannels:1});}
+  catch(e){
+    if(audioState.ctx&&audioState.ctx.createBuffer)return audioState.ctx.createBuffer(1,Math.max(1,Math.round(len)),sr);
+    throw e;
+  }
+}
+function buildModalIRBuffer(srcPos,lisPos,durSec,sr){
+  const L=Math.max(sr,Math.round(durSec*sr));
+  const buf=makeAudioBuffer(L,sr);
+  const ir=buf.getChannelData(0);
+  const fMax=Math.min(520,sr*0.22);
+  const nxMax=Math.ceil(2*fMax*state.Lx/state.c)+1;
+  const nyMax=Math.ceil(2*fMax*state.Ly/state.c)+1;
+  const alpha=Number(state.alphaAir)||0;
+  const gammaWall=audioGammaWall();
+  let modeCount=0;
+  for(let nx=0;nx<=nxMax;nx++)for(let ny=0;ny<=nyMax;ny++){
+    if(nx===0&&ny===0)continue;
+    const f=modeFreq(nx,ny,0);
+    if(f<15||f>fMax)continue;
+    if(modeCount>=280)break;
+    const gamma=alpha/2+gammaWall;
+    const coupl=modeShape(nx,ny,0,srcPos.x,srcPos.y,0)*modeShape(nx,ny,0,lisPos.x,lisPos.y,0);
+    if(Math.abs(coupl)<1e-6)continue;
+    const amp=coupl/(1+f/320);
+    const omega=2*Math.PI*f;
+    const decay=Math.exp(-gamma/sr);
+    const fadeStart=L-0.08*sr;
+    let envAmp=1;
+    for(let k=0;k<L;k++){
+      const fade = k>fadeStart ? Math.max(0,(L-k)/(0.08*sr)) : 1;
+      ir[k]+=amp*Math.sin(omega*k/sr)*envAmp*fade;
+      envAmp*=decay;
+    }
+    modeCount++;
+  }
+  let peak=1e-9;
+  for(let k=0;k<L;k++)peak=Math.max(peak,Math.abs(ir[k]));
+  if(peak>1e-9)for(let k=0;k<L;k++)ir[k]=ir[k]/peak*0.6;
+  return {buf,modeCount};
+}
+function buildSourceBuffer(src,sr){
+  if(src.type==='sine'){
+    const f=Math.max(1,Number(src.freq)||80);
+    const cycles=Math.max(24,Math.ceil(f*0.5));
+    const dur=cycles/f;
+    const buf=makeAudioBuffer(Math.max(1,Math.round(dur*sr)),sr);
+    const d=buf.getChannelData(0);
+    const amp=clamp(Number(src.amp)||1,0,2);
+    for(let k=0;k<d.length;k++)d[k]=amp*Math.sin(2*Math.PI*f*k/sr+src.phaseDeg*Math.PI/180);
+    return {buf,loop:true,typeName:`正弦 ${fmt(f,1)} Hz @ ${src.phaseDeg}°`};
+  }else if(src.type==='pulse'){
+    const f=Math.max(10,Number(src.freq)||220);
+    const width=(src.pulseWidth||5)/f;
+    const period=Math.max(width*2,Number(src.pulseRepeat)||2);
+    const buf=makeAudioBuffer(Math.max(1,Math.round(period*sr)),sr);
+    const d=buf.getChannelData(0);
+    const n=Math.min(d.length,Math.round(width*sr));
+    const amp=clamp(Number(src.amp)||1,0,2);
+    for(let k=0;k<n;k++){
+      const tau=k/sr;
+      const env=0.5*(1-Math.cos(2*Math.PI*tau/width));
+      d[k]=amp*env*Math.sin(2*Math.PI*f*tau+src.phaseDeg*Math.PI/180);
+    }
+    return {buf,loop:Number(src.pulseRepeat)>0,typeName:`脉冲 ${fmt(f,0)} Hz ${src.pulseRepeat>0?'循环':'单次'}`};
+  }else if(src.type==='sweep'){
+    const f0=Math.max(10,Number(src.freq)||20), f1=Math.max(f0+1,Number(src.sweepEnd)||200);
+    const T=clamp(Number(src.sweepDur)||2,0.3,6);
+    const buf=makeAudioBuffer(Math.max(1,Math.round(T*sr)),sr);
+    const d=buf.getChannelData(0);
+    const amp=clamp(Number(src.amp)||1,0,2);
+    for(let k=0;k<d.length;k++){
+      const t=k/sr;
+      d[k]=amp*Math.sin(2*Math.PI*(f0*t+(f1-f0)*t*t/(2*T)));
+    }
+    return {buf,loop:false,typeName:`扫频 ${fmt(f0,0)}→${fmt(f1,0)} Hz`};
+  }else{
+    const buf=makeAudioBuffer(sr,sr);
+    const d=buf.getChannelData(0);
+    const amp=clamp(Number(src.amp)||1,0,2)*0.5;
+    for(let k=0;k<d.length;k++)d[k]=amp*(Math.random()*2-1);
+    return {buf,loop:true,typeName:`白噪声`};
+  }
+}
+async function generateAudioPreview(fadeIn){
+  const gen=++audioState.generation;
+  stopAudio(true,true);
+  if(audioState.muted){
+    audioState.status='已静音：取消静音后才能播放。';
+    $('audioStatus').innerHTML='状态：<span class="mutedbadge">静音（默认）</span> '+audioState.status;
+    return;
+  }
+  const activeSources=state.sources.filter(s=>s.active);
+  const lis=selectedLis();
+  if(!activeSources.length||!lis){audioState.status='没有启用的声源或监听点。';$('audioStatus').textContent=audioState.status;return;}
+  $('audioStatus').innerHTML='状态：正在用<b>模态合成</b>生成预览（真实音频时间，不驱动 FDTD 网格）…';
+  await new Promise(r=>setTimeout(r,30));
+  const live=ensureAudioContext();
+  if(!live){audioState.status='浏览器不支持 Web Audio。';$('audioStatus').textContent=audioState.status;return;}
+  const sr=live.sampleRate||48000;
+  let IRCtor=null;
+  const OffCtor=window.OfflineAudioContext||window.webkitOfflineAudioContext;
+  if(OffCtor){
+    try{
+      const test=new OffCtor(1,10,sr);
+      if(typeof test.createConvolver==='function')IRCtor=OffCtor;
+    }catch(e){}
+  }
+  const audioDur=3.0;
+  const sSch=calcSchroeder();
+  const irDur=Math.min(3.0,0.8+(isFinite(sSch.T60)?Math.min(2.5,sSch.T60*1.2):2.2));
+  const renderLen=Math.max(sr,Math.round((audioDur+irDur+0.25)*sr));
+  const offline=IRCtor?new IRCtor(2,renderLen,sr):null;
+  if(!offline){audioState.status='需要支持 OfflineAudioContext + Convolver 的浏览器。';$('audioStatus').textContent=audioState.status;return;}
+  const nodes=[];
+  let totalModes=0;
+  try{
+    for(const src of activeSources){
+      const pos={x:clamp(src.x,0,state.Lx),y:clamp(src.y,0,state.Ly)};
+      const {buf:irBuf,modeCount}=buildModalIRBuffer(pos,lis,irDur,sr);
+      totalModes+=modeCount;
+      const sb=buildSourceBuffer(src,sr);
+      const sNode=offline.createBufferSource();
+      sNode.buffer=sb.buf; sNode.loop=sb.loop;
+      const conv=offline.createConvolver();
+      conv.normalize=false; conv.buffer=irBuf;
+      sNode.connect(conv); conv.connect(offline.destination);
+      sNode.start(0);
+      nodes.push({sNode,conv});
+    }
+  }catch(err){
+    audioState.status='预览生成失败：'+err.message;
+    $('audioStatus').textContent=audioState.status;
+    return;
+  }
+  let rendered;
+  try{
+    rendered=await offline.startRendering();
+  }catch(err){
+    audioState.status='OfflineAudioContext 渲染失败：'+err.message;
+    $('audioStatus').textContent=audioState.status;
+    return;
+  }
+  if(gen!==audioState.generation||audioState.muted)return;
+  let peak=0;
+  for(let ch=0;ch<rendered.numberOfChannels;ch++){
+    const d=rendered.getChannelData(ch);
+    for(let k=0;k<d.length;k++)peak=Math.max(peak,Math.abs(d[k]));
+  }
+  if(peak>0.9){
+    const sc=0.9/peak;
+    for(let ch=0;ch<rendered.numberOfChannels;ch++){
+      const d=rendered.getChannelData(ch);
+      for(let k=0;k<d.length;k++)d[k]*=sc;
+    }
+  }
+  const now=live.currentTime;
+  if(audioState.currentSrc){try{audioState.currentSrc.stop(now+0.02);}catch(e){}}
+  if(audioState.currentGain){
+    const old=audioState.currentGain;
+    try{old.gain.cancelScheduledValues(now);old.gain.setValueAtTime(old.gain.value,now);old.gain.linearRampToValueAtTime(0,now+0.06);}catch(e){}
+  }
+  const srcNode=live.createBufferSource();
+  srcNode.buffer=rendered;
+  const gain=live.createGain();
+  gain.gain.setValueAtTime(0.0001,now);
+  gain.gain.linearRampToValueAtTime(audioState.volume,now+0.08);
+  srcNode.connect(gain); gain.connect(live.destination);
+  srcNode.start(now);
+  srcNode.onended=()=>{if(audioState.currentSrc===srcNode){audioState.playing=false;audioState.status='播放结束。';$('audioStatus').innerHTML='状态：播放结束（激励 + 混响尾音，均为真实音频时间）。';}};
+  audioState.currentSrc=srcNode; audioState.currentGain=gain; audioState.playing=true;
+  audioState.status=`播放中：真实音频 ${audioDur} s 激励 + 模态混响尾音；${activeSources.length} 声源，${totalModes} 个模态，${sr} Hz。`;
+  $('audioStatus').innerHTML='状态：<b style="color:#4fd08a">播放中</b> '+audioState.status;
+}
+function stopAudio(fade,skipGeneration){
+  if(!skipGeneration)audioState.generation++;
+  if(!audioState.ctx||!audioState.currentSrc){audioState.playing=false;if(!fade)$('audioStatus').textContent='状态：已停止。';return;}
+  const src=audioState.currentSrc,gain=audioState.currentGain;
+  audioState.currentSrc=null;audioState.currentGain=null;audioState.playing=false;
+  const now=audioState.ctx.currentTime;
+  try{
+    if(fade&&gain){
+      gain.gain.cancelScheduledValues(now);
+      gain.gain.setValueAtTime(gain.gain.value,now);
+      gain.gain.linearRampToValueAtTime(0,now+0.05);
+    }
+    src.stop(now+(fade?0.06:0.02));
+  }catch(e){}
+  if(!fade)$('audioStatus').textContent='状态：已停止。';
+}
+function updateAudioVolume(v){
+  audioState.volume=clamp(Number(v)||0,0,0.5);
+  $('audioVolV').textContent=fmt(audioState.volume,2);
+  if(audioState.currentGain&&audioState.ctx){
+    audioState.currentGain.gain.cancelScheduledValues(audioState.ctx.currentTime);
+    audioState.currentGain.gain.setValueAtTime(audioState.volume,audioState.ctx.currentTime);
+  }
+}
+
+/* ---------------- 事件绑定 / 主循环 / 初始化 ---------------- */
+function lerp(a,b,t){return a+(b-a)*t;}
+function setRunning(r){
+  state.running=!!r;
+  $('runBtn').textContent=state.running?'运行中':'已暂停';
+  $('runBtn').classList.toggle('on',state.running);
+  $('runBtn').classList.toggle('stop',!state.running);
+}
+function triggerPulse(){
+  if(!fd)return;
+  let any=false;
+  for(const s of state.sources){
+    if(s.type==='pulse'){s.active=true;s.t0=simTime;any=true;}
+  }
+  if(!any){setStatus('当前没有脉冲型声源；可把声源类型改为“脉冲”。','warn');return;}
+  renderLists();
+  fd.irPending=true; fd.irPos=0;
+  state.listeners.forEach(l=>{l.irCount=0; if(l.ir)l.ir.fill(0);});
+  setRunning(true);
+  setStatus('已重新激发脉冲，正在记录脉冲响应（4096 个仿真步）。','ok');
+}
+function readRoomInputs(reset){
+  state.Lx=clamp(Number($('roomLx').value)||4,0.5,20);
+  state.Ly=clamp(Number($('roomLy').value)||3,0.5,20);
+  state.Lz=clamp(Number($('roomLz').value)||2.5,0.5,20);
+  state.c=clamp(Number($('roomC').value)||343,50,2000);
+  state.rho=clamp(Number($('roomRho').value)||1.2,0.1,10);
+  state.zSlice=clamp(state.zSlice,0,state.Lz);
+  state.sources.forEach(s=>{s.x=clamp(s.x,0,state.Lx);s.y=clamp(s.y,0,state.Ly);});
+  state.listeners.forEach(l=>{l.x=clamp(l.x,0,state.Lx);l.y=clamp(l.y,0,state.Ly);});
+  if(reset)initFDTD();
+  computeModes(); renderModeList(); renderSchroeder(); renderLists();
+  syncUIFromState(); drawMain();
+}
+function bindEvents(){
+  $('modeFDTD').addEventListener('click',()=>{setMode('fdtd');drawMain();});
+  $('modeModal').addEventListener('click',()=>{setMode('modal');computeModes();renderModeList();drawMain();});
+  $('runBtn').addEventListener('click',()=>setRunning(!state.running));
+  $('resetBtn').addEventListener('click',()=>{initFDTD();setRunning(true);drawMain();drawChart(true);setStatus('已重置 FDTD（时间归零，重新激发初始脉冲）。','ok');});
+  $('pulseBtn').addEventListener('click',triggerPulse);
+
+  ['roomLx','roomLy','roomLz','roomC','roomRho'].forEach(id=>$(id).addEventListener('change',()=>readRoomInputs(true)));
+  $('resSelect').addEventListener('change',e=>{state.dxBase=Number(e.target.value);initFDTD();updateFDTDInfo();drawMain();});
+  $('cflSafety').addEventListener('change',e=>{
+    const v=Number(e.target.value);
+    if(!(v<1)||v<=0){
+      setRunning(false);
+      setStatus('CFL 安全系数必须 < 1：不稳定参数已禁止运行。','err');
+      $('cflChip').className='chip err'; $('cflChip').textContent='CFL：不安全，已停止';
+      return;
+    }
+    state.cflSafety=v; initFDTD(); drawMain();
+  });
+  $('cflSafety').addEventListener('input',e=>{
+    const v=Number(e.target.value);
+    if(!(v<1)||v<=0){
+      setRunning(false);
+      setStatus('CFL 安全系数必须 < 1：不稳定参数已禁止运行。','err');
+      $('cflChip').className='chip err'; $('cflChip').textContent='CFL：不安全，已停止';
+    }
+  });
+  $('stepsPerFrame').addEventListener('change',e=>{state.stepsPerFrame=clamp(Number(e.target.value)||30,1,400);updateFDTDInfo();});
+  $('airAlpha').addEventListener('change',e=>{state.alphaAir=Math.max(0,Number(e.target.value)||0);renderSchroeder();});
+
+  const wallSet=(id,key,label)=>{
+    $(id).addEventListener('input',e=>{
+      state.wallA[key]=Number(e.target.value); $(label).textContent=fmt(state.wallA[key],2);
+      if(fd){fd.G[key==='l'?'l':key==='r'?'r':key==='t'?'t':'b']=wallG(state.wallA[key]);updateFDTDInfo();}
+      renderSchroeder();
+    });
+  };
+  wallSet('wallL','l','wallLV'); wallSet('wallR','r','wallRV'); wallSet('wallT','t','wallTV'); wallSet('wallB','b','wallBV');
+  $('wallRigidBtn').addEventListener('click',()=>{setWalls(0,0,0,0);syncUIFromState();if(fd){fd.G={l:wallG(0),r:wallG(0),t:wallG(0),b:wallG(0)};updateFDTDInfo();}renderSchroeder();setStatus('四面墙已设为刚性（α=0）。','ok');});
+  $('wallAbsBtn').addEventListener('click',()=>{setWalls(0.35,0.35,0.35,0.35);syncUIFromState();if(fd){fd.G={l:wallG(0.35),r:wallG(0.35),t:wallG(0.35),b:wallG(0.35)};updateFDTDInfo();}renderSchroeder();setStatus('四面墙已设为 α=0.35 吸收边界。','ok');});
+
+  $('addSourceBtn').addEventListener('click',addSource);
+  $('addListenerBtn').addEventListener('click',addListener);
+  $('findUniformBtn').addEventListener('click',findUniformPosition);
+
+  document.querySelectorAll('[data-tool]').forEach(b=>b.addEventListener('click',()=>{
+    state.tool=b.dataset.tool;
+    document.querySelectorAll('[data-tool]').forEach(q=>q.classList.toggle('on',q===b));
+  }));
+  $('panelAbs').addEventListener('input',e=>{state.panelAbs=Number(e.target.value);$('panelAbsV').textContent=fmt(state.panelAbs,2);});
+
+  $('visualMode').addEventListener('change',e=>{state.visualMode=e.target.value;updateBadge();drawMain();});
+  $('zSlice').addEventListener('input',e=>{state.zSlice=Number(e.target.value);$('zSliceV').textContent=fmt(state.zSlice,2)+' m';renderModeDetail();updateBadge();drawMain();});
+
+  $('fmin').addEventListener('change',e=>{state.fmin=Number(e.target.value)||20;renderModeList();});
+  $('fmax').addEventListener('change',e=>{state.fmax=Number(e.target.value)||150;renderModeList();});
+
+  document.querySelectorAll('[data-chart]').forEach(b=>b.addEventListener('click',()=>{
+    state.chartType=b.dataset.chart;
+    document.querySelectorAll('[data-chart]').forEach(q=>q.classList.toggle('on',q===b));
+    drawChart(true);
+  }));
+
+  $('audioMuted').addEventListener('change',e=>{
+    audioState.muted=e.target.checked;
+    if(audioState.muted){stopAudio(false);$('audioStatus').innerHTML='状态：<span class="mutedbadge">静音（默认）</span>';}
+    else $('audioStatus').textContent='状态：已取消静音，可播放。';
+  });
+  $('audioVolume').addEventListener('input',e=>updateAudioVolume(e.target.value));
+  $('audioPlay').addEventListener('click',()=>{ensureAudioContext();generateAudioPreview(false);});
+  $('audioStop').addEventListener('click',()=>stopAudio(false));
+
+  $('presetApply').addEventListener('click',()=>{applyPreset($('presetSelect').value);});
+  $('presetSelect').addEventListener('change',e=>{
+    const p=PRESETS.find(q=>q.id===e.target.value);
+    if(p)$('presetDesc').textContent=p.desc;
+  });
+  window.addEventListener('resize',()=>{drawMain();drawChart(true);});
+}
+function populatePresets(){
+  $('presetSelect').innerHTML=PRESETS.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  $('presetDesc').textContent=PRESETS[0].desc;
+}
+function loop(){
+  requestAnimationFrame(loop);
+  if(state.mode==='fdtd'&&state.running&&fd){
+    const spf=clamp(Number(state.stepsPerFrame)||30,1,400);
+    for(let k=0;k<spf;k++)fdtdStep();
+  }
+  frameCount++;
+  drawMain();
+  if(frameCount%3===0)drawChart(false);
+  updateStatusBar();
+}
+function initApp(){
+  populatePresets();
+  bindEvents();
+  renderLists();
+  initFDTD();
+  computeModes(); renderModeList(); renderSchroeder();
+  syncUIFromState();
+  updateFDTDInfo();
+  setRunning(true);
+  drawMain(); drawChart(true);
+  requestAnimationFrame(loop);
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initApp);else initApp();
+
+</script>
+</body>
+</html>
