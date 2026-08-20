@@ -1,0 +1,2541 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>32 位 x86 风格 C 子集解释器与可视化调试器</title>
+<style>
+  :root{
+    --bg:#15171c; --panel:#1d2027; --panel2:#242832; --border:#343a46;
+    --text:#d7dde8; --muted:#8b94a7; --accent:#4da3ff; --accent2:#2f81f7;
+    --green:#3ddc84; --red:#ff5f6d; --yellow:#f7c948; --purple:#b48cff;
+    --read:#1e8e5a; --write:#c0392b;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  #app{height:100vh; display:flex; flex-direction:column; min-width:0}
+  header.top{
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    padding:8px 12px; background:var(--panel); border-bottom:1px solid var(--border);
+  }
+  header.top h1{font-size:16px; margin:0; font-weight:600; letter-spacing:.3px}
+  header.top .sub{font-size:12px; color:var(--muted); margin-left:auto}
+  button{
+    background:var(--panel2); color:var(--text); border:1px solid var(--border);
+    border-radius:6px; padding:6px 12px; cursor:pointer; font-size:13px;
+  }
+  button:hover{border-color:var(--accent2); color:#fff}
+  button:disabled{opacity:.38; cursor:not-allowed}
+  button.primary{background:#1f4d8a; border-color:#2f6fbe}
+  button.warn{background:#5a2a2a; border-color:#a04545}
+  .toolbar{
+    display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+    padding:7px 12px; background:#191c22; border-bottom:1px solid var(--border);
+  }
+  .toolbar .group{display:flex; gap:6px; align-items:center}
+  .toolbar label{color:var(--muted); font-size:12px}
+  .statusline{
+    display:flex; gap:14px; align-items:center; margin-left:auto; font-size:12px; color:var(--muted);
+  }
+  #status{color:var(--accent)}
+  #status.error{color:var(--red)}
+  #status.done{color:var(--green)}
+  main{
+    flex:1; min-height:0; display:grid; grid-template-columns:minmax(360px,1.05fr) minmax(380px,1fr);
+    gap:10px; padding:10px; overflow:auto;
+  }
+  .column{display:flex; flex-direction:column; gap:10px; min-height:0; min-width:0}
+  .panel{
+    background:var(--panel); border:1px solid var(--border); border-radius:8px;
+    display:flex; flex-direction:column; min-height:0; overflow:hidden;
+  }
+  .panel > h2{
+    margin:0; padding:7px 10px; font-size:12px; letter-spacing:.6px; color:var(--muted);
+    background:var(--panel2); border-bottom:1px solid var(--border); text-transform:uppercase;
+    display:flex; align-items:center; gap:8px; flex:none;
+  }
+  .panel .body{padding:9px; overflow:auto; min-height:0}
+  #editor-panel{flex:1; min-height:260px}
+  .editor-shell{
+    position:relative; flex:1; min-height:260px; display:flex;
+    background:#11141a; border-radius:6px; overflow:hidden;
+  }
+  .line-highlight{
+    position:absolute; left:0; right:0; height:21px; top:-100px;
+    background:rgba(60,130,246,.20); border-left:3px solid var(--accent);
+    pointer-events:none; z-index:1; display:none;
+  }
+  .line-highlight.error{background:rgba(255,60,80,.22); border-left-color:var(--red)}
+  textarea#code-editor{
+    flex:1; width:100%; height:100%; resize:none; border:0; outline:0;
+    background:transparent; color:var(--text);
+    font:13px/1.6 "SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    padding:10px 12px; white-space:pre; overflow:auto; z-index:2;
+    tab-size:4;
+  }
+  .regs{display:grid; grid-template-columns:repeat(9,minmax(72px,1fr)); gap:6px}
+  .reg{
+    background:#161920; border:1px solid var(--border); border-radius:6px;
+    padding:5px 7px; text-align:center; min-width:0;
+  }
+  .reg .name{color:var(--muted); font-size:11px}
+  .reg .val{font-family:"SF Mono",Menlo,Consolas,monospace; font-size:13px; margin-top:2px; color:var(--accent)}
+  .reg.changed{animation:flash .7s ease-out}
+  .reg.changed .val{color:#fff}
+  @keyframes flash{
+    0%{background:#1f5cae; box-shadow:0 0 8px rgba(80,160,255,.9)}
+    100%{background:#161920}
+  }
+  .frames{display:flex; flex-direction:column; gap:8px}
+  .frame{
+    background:#161920; border:1px solid var(--border); border-radius:6px; padding:7px 9px;
+  }
+  .frame.active{border-color:var(--accent2)}
+  .frame h3{margin:0 0 6px; font-size:13px; color:var(--accent)}
+  .frame h3 span{color:var(--muted); font-weight:normal}
+  table.vars{width:100%; border-collapse:collapse; font-size:12px}
+  table.vars th,table.vars td{
+    border:1px solid var(--border); padding:3px 6px; text-align:left;
+    font-family:"SF Mono",Menlo,Consolas,monospace; white-space:nowrap;
+  }
+  table.vars th{color:var(--muted); font-weight:500; background:#20242e}
+  .addr{color:var(--purple)}
+  .num{color:var(--green)}
+  .ptr{color:var(--yellow)}
+  .mem-toolbar{display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px}
+  .mem-toolbar input{
+    background:#11141a; border:1px solid var(--border); color:var(--text); border-radius:5px;
+    padding:5px 8px; font-family:Menlo,Consolas,monospace; width:150px;
+  }
+  .mem-info{font-size:12px; color:var(--muted); margin-bottom:6px}
+  .mem-info .r{color:var(--green)} .mem-info .w{color:var(--red)}
+  .mem-table{font-family:"SF Mono",Menlo,Consolas,monospace; font-size:12px; line-height:1.5}
+  .mem-row{white-space:nowrap}
+  .mem-off{color:var(--muted); margin-right:10px}
+  .mem-byte{display:inline-block; width:2.1em; text-align:center; margin-right:1px}
+  .mem-byte.read{background:rgba(30,142,90,.55); color:#d8ffe9}
+  .mem-byte.write{background:rgba(192,57,43,.65); color:#ffe4e1}
+  .mem-byte.zero{color:#4a5264}
+  .mem-ascii{color:var(--muted); margin-left:12px}
+  .bottom-panels{grid-column:1 / -1; display:grid; grid-template-columns:1fr 1fr; gap:10px; min-height:170px}
+  #output-panel .body,#error-panel .body{font-family:"SF Mono",Menlo,Consolas,monospace; font-size:13px; white-space:pre-wrap; word-break:break-word}
+  #output{color:#cfe8cf}
+  #error-area{color:var(--red); display:none; white-space:pre-wrap}
+  .help{font-size:12px; color:var(--muted); padding:4px 10px 10px; line-height:1.7}
+  .help b{color:var(--text)}
+  .help code{color:var(--yellow); background:#161920; padding:0 4px; border-radius:4px}
+  .muted{color:var(--muted)}
+  @media (max-width:1050px){
+    main{grid-template-columns:minmax(0,1fr)}
+    .bottom-panels{grid-column:1; grid-template-columns:minmax(0,1fr)}
+    .regs{grid-template-columns:repeat(5,1fr)}
+    header.top .sub{display:none}
+  }
+  @media (max-width:620px){
+    .regs{grid-template-columns:repeat(3,1fr)}
+    main{padding:6px; gap:6px}
+    .toolbar{gap:5px}
+    button{padding:5px 8px; font-size:12px}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <h1>⌘ x86C-32 解释器 / 可视化调试器</h1>
+    <span class="sub">32 位小端内存 · 确定性子集语义 · 无真实机器码</span>
+  </header>
+
+  <div class="toolbar">
+    <div class="group">
+      <button id="btn-run" class="primary" title="连续运行">▶ 运行</button>
+      <button id="btn-pause" class="warn" title="在下一表达式边界暂停">⏸ 暂停</button>
+      <button id="btn-step" title="以 C 语句/表达式为粒度前进一步">⤵ 单步</button>
+      <button id="btn-reset" title="重新编译并复位机器状态">↺ 重置</button>
+    </div>
+    <div class="group">
+      <label>示例：</label>
+      <button data-example="loop">1 循环与整数运算</button>
+      <button data-example="recursion">2 函数调用与递归</button>
+      <button data-example="array">3 数组与指针</button>
+    </div>
+    <div class="statusline">
+      <span id="status">就绪</span>
+      <span id="steps">步数 0 / 200000</span>
+    </div>
+  </div>
+
+  <main>
+    <section class="column" id="editor-panel">
+      <div class="panel" style="flex:1; min-height:0; display:flex; flex-direction:column">
+        <h2>C 源代码（子集）</h2>
+        <div class="editor-shell">
+          <div id="line-highlight" class="line-highlight"></div>
+          <textarea id="code-editor" spellcheck="false" wrap="off"></textarea>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>支持范围与寄存器映射说明</h2>
+        <div class="help">
+          <b>支持：</b><code>int char void</code>、全局/局部变量、一维数组、<code>int*/char*</code> 指针、
+          <code>&amp; *</code>、<code>++ --</code>、算术/比较/逻辑/位运算（含 <code>&lt;&lt; &gt;&gt;</code>）、
+          复合赋值、<code>if/else while for break continue</code>、函数定义/调用/<code>return</code>、
+          <code>//</code> 与 <code>/* */</code> 注释、<code>printf</code>（<code>%d %x %c %s %%</code>）。
+          <br><b>32 位语义：</b>所有整数运算按 32 位补码回绕；<code>int/指针</code> 占 4 字节，
+          <code>char</code> 占 1 字节（有符号，读取时符号扩展）；内存字节寻址、小端序。
+          <br><b>伪 x86 寄存器约定：</b><code>EAX</code> 表达式结果/函数返回值，<code>EBX</code> 左操作数，
+          <code>ECX</code> 比较与循环条件，<code>EDX</code> 右操作数，<code>ESI</code> 读取源地址，
+          <code>EDI</code> 写入目标地址，<code>ESP/EBP</code> 栈指针/帧指针，<code>EIP</code> 伪代码地址。
+          函数调用按 x86 cdecl 风格压栈（参数从右到左、返回地址、旧 EBP）。
+          栈帧创建时局部变量区整体清零；尚未执行到的声明在调用栈中显示为“未初始化”。
+          <br><b>不支持：</b>预处理、<code>struct/union/enum</code>、<code>switch</code>、<code>float/double</code>、
+          多维数组、<code>malloc</code>、函数指针、原型声明、完整 ISO C 标准库。
+          本页不把任何未实现功能显示为可用。
+        </div>
+      </div>
+    </section>
+
+    <section class="column">
+      <div class="panel">
+        <h2>寄存器（32 位，十六进制）</h2>
+        <div class="body"><div id="regs" class="regs"></div></div>
+      </div>
+      <div class="panel" style="flex:1; min-height:180px">
+        <h2>调用栈 / 局部变量 / 全局变量</h2>
+        <div class="body" id="callstack"><div class="muted">尚未运行</div></div>
+      </div>
+      <div class="panel" style="flex:1; min-height:180px">
+        <h2>内存视图（小端，按字节）</h2>
+        <div class="body">
+          <div class="mem-toolbar">
+            <label>地址</label>
+            <input id="mem-addr" value="0x00010000" spellcheck="false">
+            <button id="btn-mem-view">查看</button>
+            <button id="btn-mem-esp" class="muted-btn">转到 ESP</button>
+            <button id="btn-mem-ebp" class="muted-btn">转到 EBP</button>
+          </div>
+          <div class="mem-info" id="mem-info">最近读写：—</div>
+          <div class="mem-table" id="mem-table"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="bottom-panels">
+      <div class="panel" id="output-panel">
+        <h2>输出控制台（printf）</h2>
+        <div class="body" id="output"></div>
+      </div>
+      <div class="panel" id="error-panel">
+        <h2>错误信息</h2>
+        <div class="body"><div id="error-area"></div><div id="error-empty" class="muted">暂无错误</div></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+"use strict";
+
+/* =====================================================================
+ * 0. 常量与小工具
+ * ===================================================================*/
+const CODE_BASE    = 0x00401000;   // 伪 EIP 地址：每个 AST 节点一个伪代码槽
+const GLOBAL_BASE  = 0x00010000;   // 全局/静态数据段
+const STACK_TOP    = 0x7FFF0000;   // 栈顶（向低地址增长）
+const STACK_LIMIT  = 0x70000000;   // 栈底限制
+const PAGE_SIZE    = 256;
+const DEFAULT_MAX_STEPS = 200000;
+const RUN_CHUNK_STEPS = 2500;
+const MAX_OBJECT_SIZE = 4 * 1024 * 1024;  // 单个全局/局部对象上限，避免页面因超大数组失去响应
+const MAX_OUTPUT_CHARS = 256 * 1024;      // 控制台输出上限
+
+function toI32(x){ return (Number(x) | 0); }
+function toU32(x){ return (Number(x) >>> 0); }
+function hex32(x){ return "0x" + toU32(x).toString(16).padStart(8,"0"); }
+function alignDown(x,a){ x = toU32(x); return (x - (x % a)) >>> 0; }
+function alignUp(x,a){ x = toU32(x); const r = x % a; return r ? ((x + (a - r)) >>> 0) : x; }
+function divI32(a,b){
+  if(b === 0) throw new Error("division by zero");
+  if(a === -2147483648 && b === -1) return -2147483648;
+  return toI32(a / b);
+}
+function modI32(a,b){
+  if(b === 0) throw new Error("division by zero");
+  return toI32(a % b);
+}
+function signExtend8(x){ return (x & 0x80) ? ((x & 0xff) - 0x100) : (x & 0xff); }
+function escapeHtml(s){
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+function parseAddressText(t){
+  t = t.trim();
+  if(!t) return null;
+  let v = null;
+  if(/^0x[0-9a-f]+$/i.test(t)) v = parseInt(t,16);
+  else if(/^\d+$/.test(t)) v = parseInt(t,10);
+  if(v === null || !isFinite(v) || v < 0 || v > 0xffffffff) return null;
+  return v >>> 0;
+}
+function typeName(t){
+  if(!t) return "?";
+  let s = t.base;
+  for(let i=0;i<t.ptrDepth;i++) s += "*";
+  if(t.arrayLen > 0) s += "[" + t.arrayLen + "]";
+  return s;
+}
+function scalarSize(t){
+  if(!t) return 0;
+  if(t.ptrDepth > 0 || t.base === "int") return 4;
+  if(t.base === "char") return 1;
+  return 0;
+}
+function storageSize(t){
+  if(t.arrayLen > 0){
+    const el = {base:t.base, ptrDepth:t.ptrDepth, arrayLen:0};
+    return scalarSize(el) * t.arrayLen;
+  }
+  return scalarSize(t);
+}
+function storageAlign(t){
+  if(t.arrayLen > 0) return (t.ptrDepth > 0 || t.base === "int") ? 4 : 1;
+  return scalarSize(t) === 4 ? 4 : 1;
+}
+function elementType(t){
+  return {base:t.base, ptrDepth:t.ptrDepth, arrayLen:0};
+}
+function isPointerType(t){ return t && t.ptrDepth > 0; }
+function isVoidType(t){ return t && t.base === "void" && t.ptrDepth === 0; }
+
+/* UTF-8 编码/解码：字符串字面量以 UTF-8 字节存入内存，printf("%s") 再解码 */
+function utf8ByteLength(s){ let n=0; for(const ch of s){ const c=ch.codePointAt(0); n += c<0x80?1:c<0x800?2:c<0x10000?3:4; } return n; }
+function utf8Encode(s){
+  const out=[];
+  for(const ch of s){
+    const c = ch.codePointAt(0);
+    if(c < 0x80){ out.push(c); }
+    else if(c < 0x800){ out.push(0xC0|(c>>6), 0x80|(c&0x3f)); }
+    else if(c < 0x10000){ out.push(0xE0|(c>>12), 0x80|((c>>6)&0x3f), 0x80|(c&0x3f)); }
+    else { out.push(0xF0|(c>>18), 0x80|((c>>12)&0x3f), 0x80|((c>>6)&0x3f), 0x80|(c&0x3f)); }
+  }
+  return out;
+}
+function utf8Decode(bytes){
+  let out="", i=0;
+  while(i < bytes.length){
+    const b0=bytes[i++];
+    if(b0 < 0x80){ out += String.fromCharCode(b0); continue; }
+    let cp, need;
+    if((b0 & 0xE0) === 0xC0){ cp=b0&0x1f; need=1; }
+    else if((b0 & 0xF0) === 0xE0){ cp=b0&0x0f; need=2; }
+    else if((b0 & 0xF8) === 0xF0){ cp=b0&0x07; need=3; }
+    else { out += "\uFFFD"; continue; }
+    let ok=true;
+    for(let j=0;j<need;j++){
+      if(i>=bytes.length || (bytes[i]&0xC0)!==0x80){ ok=false; break; }
+      cp=(cp<<6)|(bytes[i++]&0x3f);
+    }
+    if(!ok || cp>0x10ffff || (cp>=0xD800&&cp<=0xDFFF)){ out += "\uFFFD"; continue; }
+    out += String.fromCodePoint(cp);
+  }
+  return out;
+}
+
+class SourceError extends Error{
+  constructor(message, loc){
+    super(message);
+    this.name = "SourceError";
+    this.loc = loc || null;
+  }
+}
+function locText(loc){
+  if(!loc) return "";
+  return "第 " + loc.line + " 行，第 " + loc.col + " 列";
+}
+
+/* =====================================================================
+ * 1. LEXER —— 手写 tokenizer
+ * ===================================================================*/
+const KEYWORDS = new Set([
+  "int","char","void","if","else","while","for","return","break","continue"
+]);
+const MULTI_OPS = ["<<=",">>=","++","--","&&","||","<=",">=","==","!=","+=","-=","*=","/=","%=","&=","|=","^=","<<",">>"];
+const SINGLE_OPS = new Set(["+","-","*","/","%","&","|","^","~","!","<",">","=","(",")","{","}","[","]",";",",","?"]);
+
+class Lexer{
+  constructor(src){
+    this.src = src;
+    this.pos = 0;
+    this.line = 1;
+    this.col = 1;
+    this.strings = [];   // 所有字符串字面量 token，编译期分配静态地址
+  }
+  error(msg,line,col){ throw new SourceError("语法错误：" + msg, {line:line||this.line, col:col||this.col}); }
+  peek(off){ return this.src[this.pos + (off||0)]; }
+  loc(){ return {line:this.line, col:this.col}; }
+  advance(){
+    const c = this.src[this.pos++];
+    if(c === "\n"){ this.line++; this.col = 1; } else { this.col++; }
+    return c;
+  }
+  skipSpaceAndComments(){
+    for(;;){
+      while(this.pos < this.src.length){
+        const c = this.peek();
+        if(c === " " || c === "\t" || c === "\r" || c === "\n") this.advance();
+        else break;
+      }
+      if(this.peek() === "/" && this.peek(1) === "/"){
+        while(this.pos < this.src.length && this.peek() !== "\n") this.advance();
+      }else if(this.peek() === "/" && this.peek(1) === "*"){
+        const l = this.loc(); this.advance(); this.advance();
+        let closed = false;
+        while(this.pos < this.src.length){
+          if(this.peek() === "*" && this.peek(1) === "/"){ this.advance(); this.advance(); closed = true; break; }
+          this.advance();
+        }
+        if(!closed) this.error("未闭合的 /* 注释", l.line, l.col);
+      }else break;
+    }
+  }
+  next(){
+    this.skipSpaceAndComments();
+    if(this.pos >= this.src.length) return {type:"eof", value:null, loc:this.loc()};
+    const start = this.loc();
+    const c = this.peek();
+    if(/[A-Za-z_]/.test(c)){
+      let word = "";
+      while(this.pos < this.src.length && /[A-Za-z0-9_]/.test(this.peek())) word += this.advance();
+      return {type: KEYWORDS.has(word) ? "keyword" : "ident", value:word, loc:start};
+    }
+    if(/[0-9]/.test(c)) return this.readNumber(start);
+    if(c === "'") return this.readCharLit(start);
+    if(c === '"') return this.readStringLit(start);
+    for(const op of MULTI_OPS){
+      if(this.src.startsWith(op, this.pos)){
+        for(let i=0;i<op.length;i++) this.advance();
+        return {type:"op", value:op, loc:start};
+      }
+    }
+    if(SINGLE_OPS.has(c)){ this.advance(); return {type:"op", value:c, loc:start}; }
+    this.error("无法识别的字符 '" + c + "'", start.line, start.col);
+  }
+  readNumber(start){
+    let text = "";
+    if(this.peek() === "0" && (this.peek(1) === "x" || this.peek(1) === "X")){
+      text += this.advance(); text += this.advance();
+      if(!/[0-9a-fA-F]/.test(this.peek()||"")) this.error("十六进制常量缺少数字", start.line, start.col);
+      while(this.pos < this.src.length && /[0-9a-fA-F]/.test(this.peek())) text += this.advance();
+      let v = parseInt(text.substring(2), 16);
+      if(!isFinite(v) || v > 0xffffffff) this.error("整数常量超出 32 位范围", start.line, start.col);
+      return {type:"number", value:toI32(v), raw:text, loc:start};
+    }
+    while(this.pos < this.src.length && /[0-9]/.test(this.peek())) text += this.advance();
+    if(/[A-Za-z_]/.test(this.peek()||"")) this.error("整数常量格式错误：'" + text + this.peek() + "'", start.line, start.col);
+    let v = Number(text);
+    if(!isFinite(v) || v > 0xffffffff) this.error("整数常量超出 32 位范围", start.line, start.col);
+    return {type:"number", value:toI32(v), raw:text, loc:start};
+  }
+  readEscape(start, inChar){
+    if(this.peek() !== "\\") this.error("转义符格式错误", start.line, start.col);
+    this.advance();
+    const c = this.peek();
+    if(c === undefined || c === "\n") this.error("转义符不完整", start.line, start.col);
+    this.advance();
+    switch(c){
+      case "n": return 10; case "t": return 9; case "r": return 13;
+      case "0": return 0; case "\\": return 92; case "'": return 39; case '"': return 34;
+      case "x":{
+        let hex = "";
+        while(hex.length < 2 && /[0-9a-fA-F]/.test(this.peek()||"")) hex += this.advance();
+        if(!hex) this.error("\\x 后缺少十六进制数字", start.line, start.col);
+        return parseInt(hex,16);
+      }
+      default:
+        this.error("不支持的转义符 '\\" + c + "'", start.line, start.col);
+    }
+  }
+  readCharLit(start){
+    this.advance(); // 开头的单引号
+    if(this.peek() === "'") this.error("空字符常量", start.line, start.col);
+    let code;
+    if(this.peek() === "\\") code = this.readEscape(start,true);
+    else code = this.advance().charCodeAt(0);
+    if(this.peek() !== "'") this.error("字符常量未闭合（本子集只支持单字节字符常量）", start.line, start.col);
+    this.advance();
+    if(code > 0xff) this.error("字符常量超出单字节范围", start.line, start.col);
+    return {type:"number", value:signExtend8(code), raw:"char", loc:start};
+  }
+  readStringLit(start){
+    this.advance(); // 开头的双引号
+    let s = "";
+    for(;;){
+      if(this.pos >= this.src.length) this.error("字符串字面量未闭合", start.line, start.col);
+      const c = this.peek();
+      if(c === '"'){ this.advance(); break; }
+      if(c === "\n") this.error("字符串字面量中不能换行", start.line, start.col);
+      if(c === "\\"){
+        s += String.fromCharCode(this.readEscape(start,false));
+      }else{
+        s += this.advance();
+      }
+    }
+    const tok = {type:"string", value:s, loc:start, addr:null, index:this.strings.length};
+    this.strings.push(tok);
+    return tok;
+  }
+}
+
+/* =====================================================================
+ * 2. PARSER —— 递归下降 AST 构建
+ * ===================================================================*/
+class Parser{
+  constructor(src){
+    this.lexer = new Lexer(src);
+    this.tokens = [];
+    this.pos = 0;
+    let t;
+    do{ t = this.lexer.next(); this.tokens.push(t); }while(t.type !== "eof");
+  }
+  peek(k){ return this.tokens[this.pos + (k||0)]; }
+  at(k){ return this.peek(k||0); }
+  match(v){ if(this.at().value === v || this.at().type === v){ this.pos++; return true; } return false; }
+  expect(v){
+    const t = this.at();
+    if((v && t.value === v) || (!v && t.type === v)){ this.pos++; return t; }
+    this.fail("期望 '" + v + "'，实际为 '" + (t.value || t.type) + "'", t);
+  }
+  fail(msg,t){ throw new SourceError("语法错误：" + msg, (t||this.at()).loc); }
+  isTypeStart(){ const t=this.at(); return (t.type === "keyword" && (t.value === "int" || t.value === "char" || t.value === "void")); }
+  parseProgram(){
+    const globals = [], functions = [];
+    while(this.at().type !== "eof"){
+      if(!this.isTypeStart()) this.fail("顶层只允许全局变量定义或函数定义，实际为 '" + (this.at().value||this.at().type) + "'");
+      const start = this.at().loc;
+      let base = this.at().value; this.pos++;
+      let retPtr = this.parseStars();
+      if(base === "void" && retPtr > 0) this.fail("本子集不支持 void* 类型（支持 int* 与 char*）");
+      let nameTok = this.at();
+      if(nameTok.type !== "ident") this.fail("类型后需要变量名或函数名", nameTok);
+      this.pos++;
+      if(this.at().value === "("){
+        functions.push(this.parseFunctionRest(nameTok, base, retPtr, start));
+      }else{
+        for(;;){
+          const decl = this.finishDeclaratorAfterName(nameTok, base, retPtr, false);
+          let init = null;
+          if(this.match("=")) init = this.parseInitializer();
+          globals.push(this.makeVarDecl(decl, init, start));
+          if(this.match(",")){
+            retPtr = this.parseStars();
+            nameTok = this.at();
+            if(nameTok.type !== "ident") this.fail("逗号后需要变量名", nameTok);
+            this.pos++;
+            continue;
+          }
+          break;
+        }
+        this.expect(";");
+      }
+    }
+    return {kind:"Program", globals, functions};
+  }
+  parseStars(){
+    let n=0;
+    while(this.match("*")) n++;
+    return n;
+  }
+  parseInitializer(){
+    const start = this.at().loc;
+    if(this.match("{")){
+      const items = [];
+      while(!this.match("}")){
+        if(this.at().type === "eof") this.fail("初始化列表未闭合");
+        items.push(this.parseAssignment());
+        if(this.match("}")) break;
+        this.expect(",");
+        if(this.at().value === "}"){ this.pos++; break; }
+      }
+      return {kind:"list", items, loc:start};
+    }
+    return this.parseAssignment();
+  }
+  parseFunctionRest(nameTok, base, retPtr, start){
+    this.expect("(");
+    const params = [];
+    if(this.match("void") && this.at().value === ")"){
+      this.pos++;
+    }else{
+      while(!this.match(")")){
+        if(this.at().type === "eof") this.fail("函数参数列表未闭合");
+        if(!this.isTypeStart()) this.fail("函数参数需要类型", this.at());
+        const pStart = this.at().loc;
+        const pBase = this.at().value; this.pos++;
+        const pPtr = this.parseStars();
+        const pName = this.at();
+        if(pName.type !== "ident") this.fail("函数参数需要参数名", pName);
+        this.pos++;
+        const pDecl = this.finishDeclaratorAfterName(pName, pBase, pPtr, true);
+        if(params.some(p => p.name === pDecl.name)) this.fail("参数名重复：" + pDecl.name, pName);
+        params.push({name:pDecl.name, base:pDecl.base, ptrDepth:pDecl.ptrDepth, isArray:pDecl.isArray, arrayLen:pDecl.arrayLen, loc:pStart, type:null});
+        if(this.match(")")) break;
+        this.expect(",");
+      }
+    }
+    if(this.at().value === ";") this.fail("本子集不支持函数原型声明，请直接写出函数体 { ... }");
+    if(this.at().value !== "{") this.fail("函数 " + nameTok.value + " 缺少函数体");
+    const body = this.parseBlock();
+    return {
+      kind:"Function", name:nameTok.value, loc:start,
+      returnType:{base, ptrDepth:retPtr, arrayLen:0},
+      params, body
+    };
+  }
+  finishDeclaratorAfterName(nameTok, base, ptrDepth, paramMode){
+    let isArray = false, arrayLen = null;
+    if(this.match("[")){
+      isArray = true;
+      if(this.match("]")){
+        arrayLen = null;
+      }else{
+        const e = this.parseExpression();
+        this.expect("]");
+        arrayLen = {expr:e};
+      }
+    }
+    return {name:nameTok.value, base, ptrDepth, isArray, arrayLen, loc:nameTok.loc, type:null};
+  }
+  makeVarDecl(d, init, start){
+    return {
+      kind:"VarDecl", name:d.name, base:d.base, ptrDepth:d.ptrDepth,
+      isArray:d.isArray, arrayLen:d.arrayLen, init, loc:start, type:null
+    };
+  }
+  parseBlock(loopDepth){
+    const start = this.expect("{").loc;
+    const body = [];
+    while(!this.match("}")){
+      if(this.at().type === "eof") this.fail("代码块未闭合，缺少 '}'", this.at());
+      body.push(this.parseStatement(loopDepth || 0));
+    }
+    return {kind:"Block", body, loc:start};
+  }
+  parseStatement(loopDepth){
+    const t = this.at();
+    if(t.type === "eof") this.fail("语句不完整");
+    if(t.value === "{") return this.parseBlock(loopDepth);
+    if(this.isTypeStart()){
+      const start = t.loc;
+      const base = t.value; this.pos++;
+      const decls = [];
+      for(;;){
+        const ptr = this.parseStars();
+        const nameTok = this.at();
+        if(nameTok.type !== "ident") this.fail("类型后需要变量名", nameTok);
+        this.pos++;
+        const d = this.finishDeclaratorAfterName(nameTok, base, ptr, false);
+        let init = null;
+        if(this.match("=")) init = this.parseInitializer();
+        decls.push(this.makeVarDecl(d, init, start));
+        if(this.match(",")) continue;
+        break;
+      }
+      this.expect(";");
+      return {kind:"VarDecls", decls, loc:start};
+    }
+    if(t.value === "if"){
+      this.pos++; this.expect("(");
+      const test = this.parseExpression(); this.expect(")");
+      const cons = this.parseStatement(loopDepth);
+      let alt = null;
+      if(this.match("else")) alt = this.parseStatement(loopDepth);
+      return {kind:"If", test, cons, alt, loc:t.loc};
+    }
+    if(t.value === "while"){
+      this.pos++; this.expect("(");
+      const test = this.parseExpression(); this.expect(")");
+      const body = this.parseStatement(loopDepth + 1);
+      return {kind:"While", test, body, loc:t.loc};
+    }
+    if(t.value === "for"){
+      this.pos++; this.expect("(");
+      let init = null;
+      if(this.isTypeStart()){
+        const start = this.at().loc;
+        const base = this.at().value; this.pos++;
+        const decls = [];
+        for(;;){
+          const ptr = this.parseStars();
+          const nameTok = this.at();
+          if(nameTok.type !== "ident") this.fail("for 初始化声明需要变量名", nameTok);
+          this.pos++;
+          const d = this.finishDeclaratorAfterName(nameTok, base, ptr, false);
+          let ini = null;
+          if(this.match("=")) ini = this.parseInitializer();
+          decls.push(this.makeVarDecl(d, ini, start));
+          if(this.match(",")) continue;
+          break;
+        }
+        init = {kind:"VarDecls", decls, loc:start};
+        this.expect(";");
+      }else if(!this.match(";")){
+        init = this.parseExpression();
+        this.expect(";");
+      }
+      let test = null;
+      if(!this.match(";")){ test = this.parseExpression(); this.expect(";"); }
+      let update = null;
+      if(!this.match(")")){ update = this.parseExpression(); this.expect(")"); }
+      const body = this.parseStatement(loopDepth + 1);
+      return {kind:"For", init, test, update, body, loc:t.loc};
+    }
+    if(t.value === "return"){
+      this.pos++;
+      let arg = null;
+      if(!this.match(";")){ arg = this.parseExpression(); this.expect(";"); }
+      return {kind:"Return", arg, loc:t.loc};
+    }
+    if(t.value === "break"){
+      this.pos++; this.expect(";");
+      if(loopDepth <= 0) this.fail("break 不在循环内", t);
+      return {kind:"Break", loc:t.loc};
+    }
+    if(t.value === "continue"){
+      this.pos++; this.expect(";");
+      if(loopDepth <= 0) this.fail("continue 不在循环内", t);
+      return {kind:"Continue", loc:t.loc};
+    }
+    if(t.value === ";"){
+      this.pos++;
+      return {kind:"Empty", loc:t.loc};
+    }
+    const e = this.parseExpression();
+    this.expect(";");
+    return {kind:"ExprStmt", expr:e, loc:t.loc};
+  }
+  parseExpression(){ return this.parseComma(); }
+  parseComma(){
+    let left = this.parseAssignment();
+    while(this.match(",")){
+      const right = this.parseAssignment();
+      left = {kind:"Comma", left, right, loc:left.loc};
+    }
+    return left;
+  }
+  parseAssignment(){
+    const left = this.parseBinary(0);
+    const t = this.at();
+    const assignOps = new Set(["=","+=","-=","*=","/=","%=","&=","|=","^=","<<=",">>="]);
+    if(t.type === "op" && assignOps.has(t.value)){
+      this.pos++;
+      const right = this.parseAssignment();
+      return {kind:"Assign", op:t.value, left, right, loc:left.loc};
+    }
+    return left;
+  }
+  parseBinary(minPrec){
+    const precs = {
+      "||":1, "&&":2, "|":3, "^":4, "&":5,
+      "==":6, "!=":6, "<":7, "<=":7, ">":7, ">=":7,
+      "<<":8, ">>":8, "+":9, "-":9, "*":10, "/":10, "%":10
+    };
+    let left = this.parseUnary();
+    for(;;){
+      const t = this.at();
+      if(t.type !== "op" || !(t.value in precs)) break;
+      const p = precs[t.value];
+      if(p < minPrec) break;
+      this.pos++;
+      const right = this.parseBinary(p + 1);
+      left = {kind:"Binary", op:t.value, left, right, loc:left.loc};
+    }
+    return left;
+  }
+  parseUnary(){
+    const t = this.at();
+    if(t.type === "op" && (t.value === "+" || t.value === "-" || t.value === "!" || t.value === "~")){
+      this.pos++;
+      const arg = this.parseUnary();
+      return {kind:"Unary", op:t.value, arg, loc:t.loc};
+    }
+    if(t.type === "op" && t.value === "*"){
+      this.pos++;
+      const arg = this.parseUnary();
+      return {kind:"Deref", arg, loc:t.loc};
+    }
+    if(t.type === "op" && t.value === "&"){
+      this.pos++;
+      const arg = this.parseUnary();
+      return {kind:"AddressOf", arg, loc:t.loc};
+    }
+    if(t.type === "op" && (t.value === "++" || t.value === "--")){
+      this.pos++;
+      const arg = this.parseUnary();
+      return {kind:"Update", op:t.value, prefix:true, arg, loc:t.loc};
+    }
+    return this.parsePostfix();
+  }
+  parsePostfix(){
+    let node = this.parsePrimary();
+    for(;;){
+      const t = this.at();
+      if(t.value === "["){
+        this.pos++;
+        const index = this.parseExpression();
+        this.expect("]");
+        node = {kind:"ArrayAccess", array:node, index, loc:node.loc};
+      }else if(t.value === "("){
+        this.pos++;
+        const args = [];
+        if(!this.match(")")){
+          for(;;){
+            args.push(this.parseAssignment());
+            if(this.match(")")) break;
+            this.expect(",");
+          }
+        }
+        node = {kind:"Call", callee:node, args, loc:node.loc};
+      }else if(t.type === "op" && (t.value === "++" || t.value === "--")){
+        this.pos++;
+        node = {kind:"Update", op:t.value, prefix:false, arg:node, loc:node.loc};
+      }else break;
+    }
+    return node;
+  }
+  parsePrimary(){
+    const t = this.at();
+    if(t.type === "number"){
+      this.pos++;
+      return {kind:"Literal", value:t.value, loc:t.loc};
+    }
+    if(t.type === "string"){
+      this.pos++;
+      return {kind:"StringLiteral", value:t.value, strIndex:t.index, loc:t.loc, addr:null};
+    }
+    if(t.type === "ident"){
+      this.pos++;
+      return {kind:"Identifier", name:t.value, loc:t.loc};
+    }
+    if(t.value === "("){
+      this.pos++;
+      const e = this.parseExpression();
+      this.expect(")");
+      return e;
+    }
+    this.fail("期望表达式，实际为 '" + (t.value || t.type) + "'", t);
+  }
+}
+
+/* =====================================================================
+ * 3. 编译期语义处理（符号表、类型、常量全局初始化）
+ * ===================================================================*/
+function eachChild(node, fn){
+  if(!node || typeof node !== "object") return;
+  fn(node);
+  switch(node.kind){
+    case "Program": node.globals.forEach(c=>eachChild(c,fn)); node.functions.forEach(c=>eachChild(c,fn)); break;
+    case "Function": eachChild(node.body,fn); break;
+    case "Block": node.body.forEach(c=>eachChild(c,fn)); break;
+    case "VarDecls": node.decls.forEach(c=>eachChild(c,fn)); break;
+    case "VarDecl": if(node.init){ if(node.init.kind==="list") node.init.items.forEach(c=>eachChild(c,fn)); else eachChild(node.init,fn); } break;
+    case "If": eachChild(node.test,fn); eachChild(node.cons,fn); if(node.alt) eachChild(node.alt,fn); break;
+    case "While": eachChild(node.test,fn); eachChild(node.body,fn); break;
+    case "For": if(node.init) eachChild(node.init,fn); if(node.test) eachChild(node.test,fn); if(node.update) eachChild(node.update,fn); eachChild(node.body,fn); break;
+    case "Return": if(node.arg) eachChild(node.arg,fn); break;
+    case "ExprStmt": eachChild(node.expr,fn); break;
+    case "ArrayAccess": eachChild(node.array,fn); eachChild(node.index,fn); break;
+    case "Unary": case "Update": case "Deref": case "AddressOf": eachChild(node.arg,fn); break;
+    case "Binary": case "Assign": case "Comma": eachChild(node.left,fn); eachChild(node.right,fn); break;
+    case "Call": eachChild(node.callee,fn); node.args.forEach(c=>eachChild(c,fn)); break;
+    default: break;
+  }
+}
+function assignCodeAddresses(program){
+  let id = 0;
+  eachChild(program, n => { n.id = id++; n.addr = CODE_BASE + n.id * 16; });
+}
+function evalConstExpr(node, globalMap){
+  if(!node) return 0;
+  switch(node.kind){
+    case "Literal": return node.value;
+    case "StringLiteral": return node.addr || 0;
+    case "Identifier":{
+      const sym = globalMap && globalMap.get(node.name);
+      if(!sym) throw new SourceError("编译错误：常量表达式中未定义变量 '" + node.name + "'", node.loc);
+      if(sym.type.arrayLen > 0) return sym.addr;
+      throw new SourceError("编译错误：全局变量 '" + node.name + "' 的值不是编译期常量（数组名可退化为地址）", node.loc);
+    }
+    case "Unary":{
+      const v = evalConstExpr(node.arg, globalMap);
+      switch(node.op){
+        case "+": return v; case "-": return toI32(-v);
+        case "!": return v ? 0 : 1; case "~": return toI32(~v);
+      }
+      break;
+    }
+    case "AddressOf":{
+      const a = evalConstLValue(node.arg, globalMap);
+      return a;
+    }
+    case "Binary":{
+      // 全局常量初始化中的简单“数组 + 整数 / 数组 - 整数”指针运算
+      if((node.op === "+" || node.op === "-") && node.left.kind === "Identifier"){
+        const sym = globalMap && globalMap.get(node.left.name);
+        if(sym && sym.type.arrayLen > 0){
+          const base = sym.addr;
+          const delta = evalConstExpr(node.right, globalMap);
+          const es = scalarSize(elementType(sym.type));
+          const off = Math.imul(delta, es);
+          return node.op === "+" ? toI32(base + off) : toI32(base - off);
+        }
+      }
+      if((node.op === "+" || node.op === "-") && node.left.kind === "AddressOf"){
+        const sym = node.left.arg && node.left.arg.kind === "Identifier" ? globalMap && globalMap.get(node.left.arg.name) : null;
+        if(sym && sym.type.arrayLen <= 0){
+          const base = evalConstLValue(node.left.arg, globalMap);
+          const delta = evalConstExpr(node.right, globalMap);
+          const es = scalarSize(sym.type);
+          const off = Math.imul(delta, es);
+          return node.op === "+" ? toI32(base + off) : toI32(base - off);
+        }
+      }
+      const a = evalConstExpr(node.left, globalMap);
+      const b = evalConstExpr(node.right, globalMap);
+      switch(node.op){
+        case "+": return toI32(a + b);
+        case "-": return toI32(a - b);
+        case "*": return Math.imul(a,b);
+        case "/": return divI32(a,b);
+        case "%": return modI32(a,b);
+        case "<<": return toI32(a << (b & 31));
+        case ">>": return toI32(a >> (b & 31));
+        case "&": return toI32(a & b);
+        case "|": return toI32(a | b);
+        case "^": return toI32(a ^ b);
+        case "&&": return (a && b) ? 1 : 0;
+        case "||": return (a || b) ? 1 : 0;
+        case "==": return (a === b) ? 1 : 0;
+        case "!=": return (a !== b) ? 1 : 0;
+        case "<": return (a < b) ? 1 : 0;
+        case "<=": return (a <= b) ? 1 : 0;
+        case ">": return (a > b) ? 1 : 0;
+        case ">=": return (a >= b) ? 1 : 0;
+      }
+      break;
+    }
+  }
+  throw new SourceError("编译错误：该表达式不能作为全局常量初始化器", node.loc);
+}
+function evalConstLValue(node, globalMap){
+  switch(node.kind){
+    case "Identifier":{
+      const sym = globalMap && globalMap.get(node.name);
+      if(!sym) throw new SourceError("编译错误：常量表达式中未定义变量 '" + node.name + "'", node.loc);
+      return sym.addr;
+    }
+    case "ArrayAccess":{
+      const base = evalConstLValue(node.array, globalMap);
+      const t = globalMap.get(node.array.name);
+      const idx = evalConstExpr(node.index, globalMap);
+      if(!t || t.type.arrayLen <= 0) throw new SourceError("编译错误：该常量取址不受支持", node.loc);
+      if(idx < 0 || idx >= t.type.arrayLen) throw new SourceError("编译错误：全局数组初始化越界", node.loc);
+      return toU32(base + Math.imul(idx, scalarSize(elementType(t.type))));
+    }
+  }
+  throw new SourceError("编译错误：该表达式不能取常量地址", node.loc);
+}
+function finalizeDeclType(decl, isParam){
+  if(decl.base === "void"){
+    if(decl.ptrDepth === 0) throw new SourceError("编译错误：void 不能作为变量/参数的类型（只能作为函数返回类型）", decl.loc);
+    throw new SourceError("编译错误：本子集不支持 void* 变量/参数（支持 int* 与 char*）", decl.loc);
+  }
+  let arrayLen = decl.arrayLen;
+  if(decl.isArray && arrayLen && arrayLen.expr){
+    arrayLen = evalConstExpr(arrayLen.expr, null);
+    if(typeof arrayLen !== "number" || arrayLen <= 0) throw new SourceError("编译错误：数组大小必须是正整数常量", decl.loc);
+  }
+  if(isParam && decl.isArray){
+    decl.type = {base:decl.base, ptrDepth:decl.ptrDepth + 1, arrayLen:0};
+    return decl.type;
+  }
+  if(decl.isArray && arrayLen === null){
+    if(decl.init && decl.init.kind === "StringLiteral"){
+      if(!(decl.base === "char" && decl.ptrDepth === 0)) throw new SourceError("编译错误：只有 char 数组可以用字符串初始化", decl.loc);
+      arrayLen = utf8ByteLength(decl.init.value) + 1;
+    }else if(decl.init && decl.init.kind === "list"){
+      arrayLen = decl.init.items.length;
+    }else{
+      throw new SourceError("编译错误：数组 '" + decl.name + "[]' 需要初始化以推断大小", decl.loc);
+    }
+  }
+  if(decl.isArray && arrayLen !== null){
+    if(!Number.isInteger(arrayLen) || arrayLen <= 0) throw new SourceError("编译错误：数组大小必须是正整数", decl.loc);
+    decl.type = {base:decl.base, ptrDepth:decl.ptrDepth, arrayLen};
+  }else{
+    decl.type = {base:decl.base, ptrDepth:decl.ptrDepth, arrayLen:0};
+  }
+  return decl.type;
+}
+function collectDeclsInStmt(stmt, out){
+  if(!stmt) return;
+  switch(stmt.kind){
+    case "VarDecls": stmt.decls.forEach(d=>out.push(d)); break;
+    case "Block": stmt.body.forEach(s=>collectDeclsInStmt(s,out)); break;
+    case "If": collectDeclsInStmt(stmt.cons,out); if(stmt.alt) collectDeclsInStmt(stmt.alt,out); break;
+    case "While": case "For": collectDeclsInStmt(stmt.body,out); if(stmt.kind==="For" && stmt.init) collectDeclsInStmt(stmt.init,out); break;
+    default: break;
+  }
+}
+function compileProgram(source){
+  const parser = new Parser(source);
+  const program = parser.parseProgram();
+  assignCodeAddresses(program);
+
+  // 先解析所有声明的数组大小 / 推断无界数组大小
+  for(const g of program.globals) finalizeDeclType(g,false);
+  for(const fn of program.functions){
+    for(const p of fn.params) finalizeDeclType(p,true);
+    const decls = []; collectDeclsInStmt(fn.body, decls);
+    for(const d of decls) finalizeDeclType(d,false);
+  }
+
+  // 全局/字符串静态布局
+  const globalMap = new Map();
+  const globalSyms = [];
+  let cur = GLOBAL_BASE;
+  for(const g of program.globals){
+    if(globalMap.has(g.name)) throw new SourceError("编译错误：全局变量重复定义：" + g.name, g.loc);
+    cur = alignUp(cur, storageAlign(g.type));
+    const gsize = storageSize(g.type);
+    if(gsize > MAX_OBJECT_SIZE) throw new SourceError("编译错误：全局对象 '" + g.name + "' 超过单对象大小上限 " + MAX_OBJECT_SIZE + " 字节", g.loc);
+    if(toU32(cur) + gsize > CODE_BASE) throw new SourceError("编译错误：全局/静态数据段空间不足（与代码段重叠）", g.loc);
+    const sym = {id:globalSyms.length, name:g.name, type:g.type, addr:cur, size:gsize, global:true, decl:g};
+    g.sym = sym; globalMap.set(g.name, sym); globalSyms.push(sym);
+    cur = (cur + sym.size) >>> 0;
+  }
+  const stringBase = alignUp(cur, 4);
+  const stringTable = [];
+  let scur = stringBase;
+  for(const tok of parser.lexer.strings){
+    const bytes = utf8Encode(tok.value);
+    tok.addr = scur;
+    stringTable.push({addr:scur, bytes, text:tok.value});
+    scur = (scur + bytes.length + 1) >>> 0;
+  }
+  eachChild(program, n => { if(n.kind === "StringLiteral"){ n.addr = parser.lexer.strings[n.strIndex].addr; } });
+
+  // 全局常量初始化数据
+  for(const g of program.globals){
+    g.initBytes = compileGlobalInitBytes(g, globalMap);
+  }
+
+  // 函数局部变量布局（相对 EBP 的负偏移）
+  const functionMap = new Map();
+  for(const fn of program.functions){
+    if(functionMap.has(fn.name)) throw new SourceError("编译错误：函数重复定义：" + fn.name, fn.loc);
+    functionMap.set(fn.name, fn);
+    let idCounter = 0;
+    const paramSyms = fn.params.map((p,i)=>{
+      const sym = {id:idCounter++, name:p.name, type:p.type, offset:8 + i*4, size:scalarSize(p.type), fn, global:false, param:true};
+      p.sym = sym;
+      return sym;
+    });
+    fn.paramSyms = paramSyms;
+    fn.localSyms = [];
+    let offset = 0;
+    const allocLocal = (d)=>{
+      const size = storageSize(d.type);
+      const align = storageAlign(d.type);
+      offset -= size;
+      if(align > 1) offset &= ~(align-1);
+      const sym = {id:idCounter++, name:d.name, type:d.type, offset, size, fn, global:false, param:false, decl:d};
+      d.sym = sym;
+      fn.localSyms.push(sym);
+      return sym;
+    };
+    const walkScope = (stmt, scopeMap)=>{
+      if(!stmt) return;
+      switch(stmt.kind){
+        case "VarDecls":{
+          for(const d of stmt.decls){
+            if(scopeMap.has(d.name)) throw new SourceError("编译错误：同一作用域内重复定义变量 '" + d.name + "'", d.loc);
+            const sym = allocLocal(d);
+            scopeMap.set(d.name, sym);
+          }
+          break;
+        }
+        case "Block":{
+          const map = new Map();
+          stmt.scopeSyms = map;
+          for(const s of stmt.body) walkScope(s, map);
+          break;
+        }
+        case "For":{
+          const map = new Map();
+          stmt.scopeSyms = map;
+          if(stmt.init && stmt.init.kind === "VarDecls") for(const d of stmt.init.decls){ if(map.has(d.name)) throw new SourceError("编译错误：同一作用域内重复定义变量 '" + d.name + "'", d.loc); const sym=allocLocal(d); map.set(d.name,sym); }
+          walkScope(stmt.body, map);
+          break;
+        }
+        case "If": walkScope(stmt.cons, scopeMap); if(stmt.alt) walkScope(stmt.alt, scopeMap); break;
+        case "While": walkScope(stmt.body, scopeMap); break;
+        default: break;
+      }
+    };
+    // 函数体 Block 自己建作用域；参数在更外层
+    const bodyMap = new Map();
+    fn.body.scopeSyms = bodyMap;
+    for(const s of fn.body.body) walkScope(s, bodyMap);
+    fn.frameSize = Math.max(0, -offset);
+    fn.frameSize = alignUp(fn.frameSize, 4);
+    if(fn.frameSize > MAX_OBJECT_SIZE) throw new SourceError("编译错误：函数 " + fn.name + " 的局部变量区超过 " + MAX_OBJECT_SIZE + " 字节上限", fn.loc);
+  }
+  if(!functionMap.has("main")) throw new SourceError("编译错误：缺少 main 函数", null);
+  const mainFn = functionMap.get("main");
+  if(mainFn.params.length > 0) throw new SourceError("编译错误：本子集暂不支持 main 接收参数（请使用 main(void) 或 main()）", mainFn.loc);
+
+  // 名称解析 + 类型标注
+  resolveProgram(program, globalMap, functionMap);
+  program.globalMap = globalMap;
+  program.globalSyms = globalSyms;
+  program.stringTable = stringTable;
+  program.functionMap = functionMap;
+  program.mainFn = mainFn;
+  program.source = source;
+  return program;
+}
+function compileGlobalInitBytes(decl, globalMap){
+  const t = decl.type;
+  const size = storageSize(t);
+  const bytes = new Uint8Array(size);
+  const writeScalar = (off, val, type)=>{
+    if(type.ptrDepth > 0 || type.base === "int"){
+      const u = toU32(val);
+      bytes[off] = u & 0xff; bytes[off+1] = (u >>> 8)&0xff; bytes[off+2] = (u >>> 16)&0xff; bytes[off+3] = (u >>> 24)&0xff;
+    }else if(type.base === "char"){
+      bytes[off] = val & 0xff;
+    }
+  };
+  if(!decl.init) return bytes;
+  if(decl.init.kind === "StringLiteral"){
+    if(t.arrayLen > 0 && t.base === "char" && t.ptrDepth === 0){
+      const b = utf8Encode(decl.init.value);
+      if(b.length + 1 > size) throw new SourceError("编译错误：字符串过长，无法放入数组 '" + decl.name + "'", decl.loc);
+      for(let i=0;i<b.length;i++) bytes[i] = b[i];
+      bytes[b.length] = 0;
+    }else if(isPointerType(t) && t.base === "char"){
+      writeScalar(0, decl.init.addr || 0, t);
+    }else{
+      throw new SourceError("编译错误：该变量不能用字符串初始化", decl.loc);
+    }
+    return bytes;
+  }
+  if(decl.init.kind === "list"){
+    if(t.arrayLen <= 0) throw new SourceError("编译错误：只有数组可以使用初始化列表", decl.loc);
+    if(decl.init.items.length > t.arrayLen) throw new SourceError("编译错误：数组 '" + decl.name + "' 初始化项过多", decl.loc);
+    const et = elementType(t);
+    const es = scalarSize(et);
+    decl.init.items.forEach((item,i)=>{
+      const v = evalConstExpr(item, globalMap);
+      writeScalar(i*es, v, et);
+    });
+    return bytes;
+  }
+  const v = evalConstExpr(decl.init, globalMap);
+  if(t.arrayLen > 0) throw new SourceError("编译错误：数组 '" + decl.name + "' 需要初始化列表", decl.loc);
+  writeScalar(0, v, t);
+  return bytes;
+}
+function exprTypeOfSymbol(sym){
+  if(sym.type.arrayLen > 0){
+    return {base:sym.type.base, ptrDepth:sym.type.ptrDepth + 1, arrayLen:0};
+  }
+  return {base:sym.type.base, ptrDepth:sym.type.ptrDepth, arrayLen:0};
+}
+function resolveProgram(program, globalMap, functionMap){
+  const BUILTIN = {name:"printf", builtin:true, returnType:{base:"int", ptrDepth:0, arrayLen:0}};
+  for(const fn of program.functions){
+    const scopes = [new Map(fn.paramSyms.map(s=>[s.name,s]))];
+    resolveStmt(fn.body, scopes, fn, globalMap, functionMap);
+  }
+  function resolveStmt(stmt, scopes, fn, globalMap, functionMap){
+    if(!stmt) return;
+    switch(stmt.kind){
+      case "Block":{
+        const map = stmt.scopeSyms || new Map();
+        const next = scopes.concat([map]);
+        for(const s of stmt.body) resolveStmt(s, next, fn, globalMap, functionMap);
+        break;
+      }
+      case "VarDecls":{
+        for(const d of stmt.decls){
+          if(d.init){ if(d.init.kind==="list") d.init.items.forEach(e=>resolveExpr(e, scopes, fn, globalMap, functionMap)); else resolveExpr(d.init, scopes, fn, globalMap, functionMap); }
+          validateDeclInit(d);
+        }
+        break;
+      }
+      case "If":
+        resolveExpr(stmt.test, scopes, fn, globalMap, functionMap);
+        resolveStmt(stmt.cons, scopes, fn, globalMap, functionMap);
+        if(stmt.alt) resolveStmt(stmt.alt, scopes, fn, globalMap, functionMap);
+        break;
+      case "While":
+        resolveExpr(stmt.test, scopes, fn, globalMap, functionMap);
+        resolveStmt(stmt.body, scopes, fn, globalMap, functionMap);
+        break;
+      case "For":{
+        const map = stmt.scopeSyms || new Map();
+        const next = scopes.concat([map]);
+        if(stmt.init){
+          if(stmt.init.kind === "VarDecls") resolveStmt(stmt.init, next, fn, globalMap, functionMap);
+          else resolveExpr(stmt.init, next, fn, globalMap, functionMap);
+        }
+        if(stmt.test) resolveExpr(stmt.test, next, fn, globalMap, functionMap);
+        if(stmt.update) resolveExpr(stmt.update, next, fn, globalMap, functionMap);
+        resolveStmt(stmt.body, next, fn, globalMap, functionMap);
+        break;
+      }
+      case "Return":
+        if(stmt.arg) resolveExpr(stmt.arg, scopes, fn, globalMap, functionMap);
+        break;
+      case "ExprStmt":
+        resolveExpr(stmt.expr, scopes, fn, globalMap, functionMap);
+        break;
+      default: break;
+    }
+  }
+  function resolveExpr(node, scopes, fn, globalMap, functionMap){
+    if(!node) return;
+    switch(node.kind){
+      case "Identifier":{
+        for(let i=scopes.length-1;i>=0;i--){ const s=scopes[i].get(node.name); if(s){ node.sym=s; break; } }
+        if(!node.sym) node.sym = globalMap.get(node.name);
+        if(!node.sym) throw new SourceError("编译错误：未定义变量 '" + node.name + "'", node.loc);
+        break;
+      }
+      case "Call":{
+        if(node.callee.kind !== "Identifier") throw new SourceError("编译错误：只能直接调用函数名（不支持函数指针）", node.callee.loc);
+        const nm = node.callee.name;
+        if(nm === "printf") node.func = BUILTIN;
+        else node.func = functionMap.get(nm);
+        if(!node.func) throw new SourceError("编译错误：未定义函数 '" + nm + "'", node.callee.loc);
+        // 函数名不按普通标识符解析；evalCall 直接使用 node.func
+        node.args.forEach(a=>resolveExpr(a, scopes, fn, globalMap, functionMap));
+        break;
+      }
+      case "ArrayAccess":
+        resolveExpr(node.array, scopes, fn, globalMap, functionMap);
+        resolveExpr(node.index, scopes, fn, globalMap, functionMap);
+        break;
+      case "Unary": case "Deref": case "AddressOf": case "Update":
+        resolveExpr(node.arg, scopes, fn, globalMap, functionMap);
+        break;
+      case "Binary": case "Assign": case "Comma":
+        resolveExpr(node.left, scopes, fn, globalMap, functionMap);
+        resolveExpr(node.right, scopes, fn, globalMap, functionMap);
+        break;
+      case "StringLiteral": case "Literal": break;
+    }
+    annotateType(node, fn);
+  }
+  function annotateType(node, fn){
+    switch(node.kind){
+      case "Literal": node.type = {base:"int", ptrDepth:0, arrayLen:0}; break;
+      case "StringLiteral": node.type = {base:"char", ptrDepth:1, arrayLen:0}; break;
+      case "Identifier": node.type = exprTypeOfSymbol(node.sym); break;
+      case "ArrayAccess":{
+        const at = node.array.type;
+        if(!at || at.ptrDepth < 1) throw new SourceError("编译错误：下标运算符需要指针或数组", node.loc);
+        node.type = {base:at.base, ptrDepth:at.ptrDepth - 1, arrayLen:0};
+        break;
+      }
+      case "Deref":{
+        const at = node.arg.type;
+        if(!at || at.ptrDepth < 1) throw new SourceError("编译错误：* 需要指针操作数", node.loc);
+        node.type = {base:at.base, ptrDepth:at.ptrDepth - 1, arrayLen:0};
+        break;
+      }
+      case "AddressOf":{
+        if(!isLValueNode(node.arg)) throw new SourceError("编译错误：& 需要可取址的左值", node.loc);
+        const at = node.arg.type;
+        node.type = {base:at.base, ptrDepth:at.ptrDepth + 1, arrayLen:0};
+        break;
+      }
+      case "Unary":
+        node.type = {base:"int", ptrDepth:0, arrayLen:0};
+        break;
+      case "Update":{
+        if(!isLValueNode(node.arg)) throw new SourceError("编译错误：++/-- 需要可修改的左值", node.loc);
+        if(node.arg.kind === "Identifier" && node.arg.sym && node.arg.sym.type.arrayLen > 0) throw new SourceError("编译错误：不能对数组整体执行 ++/--", node.loc);
+        node.type = node.arg.type;
+        break;
+      }
+      case "Binary":{
+        const lt = node.left.type, rt = node.right.type;
+        if(node.op === "+"){
+          if(isPointerType(lt) && !isPointerType(rt)) node.type = lt;
+          else if(isPointerType(rt) && !isPointerType(lt)) node.type = rt;
+          else if(isPointerType(lt) && isPointerType(rt)) throw new SourceError("编译错误：不支持指针 + 指针", node.loc);
+          else node.type = {base:"int", ptrDepth:0, arrayLen:0};
+        }else if(node.op === "-"){
+          if(isPointerType(lt) && !isPointerType(rt)) node.type = lt;
+          else if(isPointerType(lt) && isPointerType(rt)) throw new SourceError("编译错误：不支持指针 - 指针", node.loc);
+          else if(isPointerType(rt)) throw new SourceError("编译错误：不支持 整数 - 指针", node.loc);
+          else node.type = {base:"int", ptrDepth:0, arrayLen:0};
+        }else if(node.op === "&&" || node.op === "||"){
+          node.type = {base:"int", ptrDepth:0, arrayLen:0};
+        }else if(node.op === "==" || node.op === "!="){
+          node.type = {base:"int", ptrDepth:0, arrayLen:0};
+        }else{
+          if(isPointerType(lt) || isPointerType(rt)) throw new SourceError("编译错误：该运算符不支持指针操作数", node.loc);
+          node.type = {base:"int", ptrDepth:0, arrayLen:0};
+        }
+        break;
+      }
+      case "Assign":{
+        if(!isLValueNode(node.left)) throw new SourceError("编译错误：赋值目标必须是可修改的左值", node.loc);
+        if(node.left.kind === "Identifier" && node.left.sym && node.left.sym.type.arrayLen > 0) throw new SourceError("编译错误：不能对数组整体赋值", node.loc);
+        if(isPointerType(node.left.type) && node.op !== "=" && node.op !== "+=" && node.op !== "-="){
+          throw new SourceError("编译错误：指针只支持 =、+=、-= 运算", node.loc);
+        }
+        if(node.op === "=" && node.right.kind === "StringLiteral"){
+          if(!(isPointerType(node.left.type) && node.left.type.base === "char")){
+            throw new SourceError("编译错误：字符串字面量只能赋给 char*", node.loc);
+          }
+        }
+        node.type = node.left.type;
+        break;
+      }
+      case "Call":{
+        if(node.func.builtin){
+          if(node.args.length < 1) throw new SourceError("编译错误：printf 至少需要格式字符串参数", node.loc);
+          if(node.args[0].type.ptrDepth !== 1 || node.args[0].type.base !== "char") throw new SourceError("编译错误：printf 的第一个参数必须是 char*", node.loc);
+          node.type = {base:"int", ptrDepth:0, arrayLen:0};
+        }else{
+          if(node.args.length !== node.func.params.length) throw new SourceError("编译错误：函数 " + node.func.name + " 需要 " + node.func.params.length + " 个参数，传入了 " + node.args.length + " 个", node.loc);
+          node.type = node.func.returnType;
+        }
+        break;
+      }
+      case "Comma":
+        node.type = node.right.type;
+        break;
+    }
+  }
+  function isLValueNode(n){
+    return n && (n.kind === "Identifier" || n.kind === "ArrayAccess" || n.kind === "Deref");
+  }
+  function validateDeclInit(d){
+    if(!d.init) return;
+    if(d.init.kind === "StringLiteral"){
+      if(d.type.arrayLen > 0){
+        if(!(d.type.base === "char" && d.type.ptrDepth === 0)) throw new SourceError("编译错误：字符串只能初始化 char 数组", d.loc);
+      }else if(!(isPointerType(d.type) && d.type.base === "char")){
+        throw new SourceError("编译错误：字符串只能初始化 char 数组或 char*", d.loc);
+      }
+    }else if(d.init.kind === "list"){
+      if(d.type.arrayLen <= 0) throw new SourceError("编译错误：只有数组可以使用初始化列表", d.loc);
+      if(d.init.items.length > d.type.arrayLen) throw new SourceError("编译错误：数组 '" + d.name + "' 初始化项过多", d.loc);
+    }else{
+      if(d.type.arrayLen > 0) throw new SourceError("编译错误：数组 '" + d.name + "' 需要初始化列表 {...} 或字符串", d.loc);
+    }
+  }
+}
+
+/* =====================================================================
+ * 4. MEMORY MODEL —— 确定性 32 位小端字节内存
+ * ===================================================================*/
+class MemoryModel{
+  constructor(){
+    this.pages = new Map();
+    this.allocations = [];
+    this.pointerMeta = new Map();
+    this.lastRead = null;
+    this.lastWrite = null;
+    this.readSerial = 0;
+    this.writeSerial = 0;
+  }
+  pageFor(u){ return Math.floor(u / PAGE_SIZE) * PAGE_SIZE; }
+  ensurePage(u){
+    const p = this.pageFor(u);
+    let page = this.pages.get(p);
+    if(!page){ page = new Uint8Array(PAGE_SIZE); this.pages.set(p, page); }
+    return page;
+  }
+  peekByte(u){
+    u = toU32(u);
+    const page = this.pages.get(this.pageFor(u));
+    return page ? page[u % PAGE_SIZE] : 0;
+  }
+  readBytes(u, n, label){
+    u = toU32(u);
+    const out = new Array(n);
+    for(let i=0;i<n;i++){
+      const a = (u + i) >>> 0;
+      const page = this.pages.get(this.pageFor(a));
+      out[i] = page ? page[a % PAGE_SIZE] : 0;
+    }
+    this.lastRead = {addr:u, size:n, label:label||"read", serial:++this.readSerial};
+    return out;
+  }
+  writeBytes(u, bytes, label){
+    u = toU32(u);
+    for(let i=0;i<bytes.length;i++){
+      const a = (u + i) >>> 0;
+      const page = this.ensurePage(a);
+      page[a % PAGE_SIZE] = bytes[i] & 0xff;
+    }
+    this.lastWrite = {addr:u, size:bytes.length, label:label||"write", serial:++this.writeSerial};
+  }
+  writeBytesRaw(u, bytes){ this.writeBytes(u, bytes, "raw-init"); }
+  readU8(u, label){ return this.readBytes(u,1,label)[0]; }
+  readU32(u, label){
+    const b = this.readBytes(u,4,label);
+    return toI32((b[0] | (b[1]<<8) | (b[2]<<16) | (b[3]<<24)) >>> 0);
+  }
+  writeU8(u,v,label){ this.writeBytes(u,[v],label); }
+  writeU32(u,v,label){
+    const x = toU32(v);
+    this.writeBytes(u,[x&0xff,(x>>>8)&0xff,(x>>>16)&0xff,(x>>>24)&0xff],label);
+  }
+  addAllocation(a){ this.allocations.push(a); }
+  removeAllocations(frameId){
+    this.allocations = this.allocations.filter(a => a.frameId !== frameId);
+    // 栈帧弹出后，属于该栈帧的指针来源信息也一并失效
+    const removeKeys = [];
+    for(const addr of this.pointerMeta.keys()){
+      if(addr >= STACK_LIMIT && addr < STACK_TOP){
+        let inActive = false;
+        for(const act of this.allocations){
+          if(addr >= act.base && addr < act.base + act.size){ inActive = true; break; }
+        }
+        if(!inActive) removeKeys.push(addr);
+      }
+    }
+    for(const k of removeKeys) this.pointerMeta.delete(k);
+  }
+  findActiveAllocation(addr, size){
+    const end = (addr + size - 1) >>> 0;
+    for(let i=this.allocations.length-1;i>=0;i--){
+      const a = this.allocations[i];
+      if(addr >= a.base && end >= a.base && addr < a.base + a.size && end < a.base + a.size) return a;
+    }
+    return null;
+  }
+  assertReadable(addr, size, label){
+    addr = toU32(addr); size = size|0;
+    if(addr === 0) throw new RuntimeError("运行时错误：空指针（地址 0）" + (label ? "：" + label : ""), null);
+    const a = this.findActiveAllocation(addr,size);
+    if(!a) throw new RuntimeError("运行时错误：非法指针访问 " + hex32(addr) + "（大小 " + size + " 字节，未映射到有效对象）" + (label ? "：" + label : ""), null);
+    return a;
+  }
+  assertWritable(addr, size, label){
+    const a = this.assertReadable(addr,size,label);
+    if(a.readonly) throw new RuntimeError("运行时错误：写入只读内存（字符串字面量）" + (label ? "：" + label : ""), null);
+    return a;
+  }
+  readCString(addr, maxLen, label){
+    const bytes = [];
+    let u = toU32(addr);
+    for(let i=0;i<maxLen;i++){
+      this.assertReadable(u,1,label || "字符串读取");
+      const b = this.readU8(u,"string:"+(label||""));
+      if(b === 0) return bytes;
+      bytes.push(b);
+      u = (u + 1) >>> 0;
+    }
+    throw new RuntimeError("运行时错误：字符串超过 " + maxLen + " 字节仍未遇到 '\\0'", null);
+  }
+}
+
+class RuntimeError extends Error{
+  constructor(message, loc){
+    super(message);
+    this.name = "RuntimeError";
+    this.loc = loc || null;
+  }
+}
+
+/* =====================================================================
+ * 5. RUNTIME / INTERPRETER —— 伪 x86 语义树解释执行
+ * ===================================================================*/
+class ReturnSignal{ constructor(value){ this.value = value|0; } }
+class BreakSignal{}
+class ContinueSignal{}
+
+class Runtime{
+  constructor(program){
+    this.program = program;
+    this.mem = null;
+    this.regs = null;
+    this.frames = [];
+    this.frameCounter = 0;
+    this.stepCount = 0;
+    this.maxSteps = DEFAULT_MAX_STEPS;
+    this.currentLoc = null;
+    this.currentNode = null;
+    this.gen = null;
+    this.onOutput = null;
+    this.lastLValueMeta = null;
+    this.reset();
+  }
+  reset(){
+    this.mem = new MemoryModel();
+    this.regs = {eax:0, ebx:0, ecx:0, edx:0, esi:0, edi:0, esp:STACK_TOP, ebp:0, eip:this.program.mainFn.addr};
+    this.frames = [];
+    this.frameCounter = 0;
+    this.stepCount = 0;
+    this.currentLoc = null;
+    this.gen = null;
+    for(const sym of this.program.globalSyms){
+      this.mem.addAllocation({base:sym.addr, size:sym.size, name:sym.name, kind:"global", readonly:false});
+      this.mem.writeBytes(sym.addr, sym.decl.initBytes || new Uint8Array(sym.size), "全局初始化:" + sym.name);
+    }
+    for(const s of this.program.stringTable){
+      const bytes = s.bytes.concat([0]);
+      this.mem.addAllocation({base:s.addr, size:bytes.length, name:"string", kind:"string", readonly:true});
+      this.mem.writeBytes(s.addr, bytes, "字符串常量");
+    }
+  }
+  startGenerator(){ this.gen = this.runMain(); return this.gen; }
+  *runMain(){
+    const fn = this.program.mainFn;
+    const rv = yield* this.callFunction(fn, [], null);
+    this.regs.eip = 0;
+    return rv ? rv.value : 0;
+  }
+  *emitStep(node){
+    this.currentNode = node;
+    this.currentLoc = node && node.loc ? node.loc : null;
+    this.regs.eip = node ? node.addr : 0;
+    if(this.stepCount >= this.maxSteps){
+      throw new RuntimeError("运行时错误：执行步数超过上限 " + this.maxSteps + "（疑似死循环）。可点击重置后检查循环条件。", this.currentLoc);
+    }
+    this.stepCount++;
+    yield {node, loc:this.currentLoc};
+  }
+  push4(v){
+    this.regs.esp = (this.regs.esp - 4) >>> 0;
+    if(this.regs.esp < STACK_LIMIT) throw new RuntimeError("运行时错误：栈溢出（ESP 越过 " + hex32(STACK_LIMIT) + "）", this.currentLoc);
+    this.mem.writeU32(this.regs.esp, v, "push");
+  }
+  pop4(){
+    const v = this.mem.readU32(this.regs.esp, "pop");
+    this.regs.esp = (this.regs.esp + 4) >>> 0;
+    return v;
+  }
+  currentFrame(){ return this.frames.length ? this.frames[this.frames.length-1] : null; }
+  addressOfSym(sym){
+    if(sym.global) return sym.addr;
+    const f = this.currentFrame();
+    if(!f || f.fn !== sym.fn) throw new RuntimeError("运行时错误：局部变量 '" + sym.name + "' 的栈帧已不存在", this.currentLoc);
+    return (f.ebp + sym.offset) >>> 0;
+  }
+  loadValue(addr, type, label){
+    addr = toU32(addr);
+    const size = scalarSize(type);
+    this.mem.assertReadable(addr, size, label || "读取 " + typeName(type));
+    this.regs.esi = addr;
+    let v;
+    if(type.base === "char" && type.ptrDepth === 0) v = signExtend8(this.mem.readU8(addr, label || "char load"));
+    else v = this.mem.readU32(addr, label || (isPointerType(type) ? "pointer load" : "int load"));
+    return v;
+  }
+  storeValue(addr, type, rv, label){
+    addr = toU32(addr);
+    const size = scalarSize(type);
+    this.mem.assertWritable(addr, size, label || "写入 " + typeName(type));
+    let v = rv.value;
+    if(type.base === "char" && type.ptrDepth === 0){
+      v = signExtend8(v & 0xff);
+      this.mem.writeU8(addr, v & 0xff, label || "char store");
+    }else{
+      v = toI32(v);
+      this.mem.writeU32(addr, v, label || (isPointerType(type) ? "pointer store" : "int store"));
+    }
+    if(isPointerType(type)){
+      if(rv.meta) this.mem.pointerMeta.set(addr, rv.meta);
+      else this.mem.pointerMeta.delete(addr);
+    }else{
+      this.mem.pointerMeta.delete(addr);
+    }
+    this.regs.edi = addr;
+    this.regs.eax = v;
+    return v;
+  }
+  pointerMetaFor(addr){
+    const m = this.mem.pointerMeta.get(toU32(addr));
+    return m || null;
+  }
+  *execStatement(stmt){
+    switch(stmt.kind){
+      case "Block":{
+        for(const s of stmt.body) yield* this.execStatement(s);
+        break;
+      }
+      case "VarDecls":{
+        for(const d of stmt.decls) yield* this.execVarDecl(d);
+        break;
+      }
+      case "ExprStmt":{
+        // 表达式语句本身也作为一个单步边界，保证循环体内逐行高亮
+        yield* this.emitStep(stmt);
+        yield* this.evalExpr(stmt.expr);
+        break;
+      }
+      case "If":{
+        yield* this.emitStep(stmt);
+        const c = yield* this.evalExpr(stmt.test);
+        this.regs.ecx = c.value ? 1 : 0;
+        if(c.value){ yield* this.execStatement(stmt.cons); }
+        else if(stmt.alt){ yield* this.execStatement(stmt.alt); }
+        break;
+      }
+      case "While":{
+        for(;;){
+          yield* this.emitStep(stmt);
+          const c = yield* this.evalExpr(stmt.test);
+          this.regs.ecx = c.value ? 1 : 0;
+          if(!c.value) break;
+          try{ yield* this.execStatement(stmt.body); }
+          catch(e){ if(e instanceof BreakSignal) break; if(e instanceof ContinueSignal) continue; throw e; }
+        }
+        break;
+      }
+      case "For":{
+        if(stmt.init){
+          if(stmt.init.kind === "VarDecls"){ for(const d of stmt.init.decls) yield* this.execVarDecl(d); }
+          else yield* this.evalExpr(stmt.init);
+        }
+        for(;;){
+          yield* this.emitStep(stmt);
+          if(stmt.test){
+            const c = yield* this.evalExpr(stmt.test);
+            this.regs.ecx = c.value ? 1 : 0;
+            if(!c.value) break;
+          }
+          try{ yield* this.execStatement(stmt.body); }
+          catch(e){
+            if(e instanceof BreakSignal) break;
+            if(e instanceof ContinueSignal){ /* 继续执行更新表达式 */ }
+            else throw e;
+          }
+          if(stmt.update) yield* this.evalExpr(stmt.update);
+        }
+        break;
+      }
+      case "Return":{
+        yield* this.emitStep(stmt);
+        let v = 0;
+        if(stmt.arg){ const rv = yield* this.evalExpr(stmt.arg); v = rv.value; }
+        this.regs.eax = v|0;
+        throw new ReturnSignal(v);
+      }
+      case "Break":{
+        yield* this.emitStep(stmt);
+        throw new BreakSignal();
+      }
+      case "Continue":{
+        yield* this.emitStep(stmt);
+        throw new ContinueSignal();
+      }
+      case "Empty":{
+        yield* this.emitStep(stmt);
+        break;
+      }
+    }
+  }
+  *execVarDecl(decl){
+    yield* this.emitStep(decl);
+    const sym = decl.sym;
+    const frame = this.currentFrame();
+    const addr = this.addressOfSym(sym);
+    const t = sym.type;
+    if(t.arrayLen > 0){
+      if(decl.init && decl.init.kind === "StringLiteral"){
+        const bytes = utf8Encode(decl.init.value);
+        if(bytes.length + 1 > t.arrayLen) throw new RuntimeError("运行时错误：字符串过长，无法放入数组 '" + sym.name + "'", decl.loc);
+        this.mem.assertWritable(addr, bytes.length + 1, "初始化数组");
+        this.mem.writeBytes(addr, bytes.concat([0]), "数组初始化:" + sym.name);
+      }else if(decl.init && decl.init.kind === "list"){
+        if(decl.init.items.length > t.arrayLen) throw new RuntimeError("运行时错误：数组 '" + sym.name + "' 初始化项过多", decl.loc);
+        const et = elementType(t);
+        const es = scalarSize(et);
+        for(let i=0;i<decl.init.items.length;i++){
+          const rv = yield* this.evalExpr(decl.init.items[i]);
+          this.storeValue((addr + i*es) >>> 0, et, rv, "数组初始化:" + sym.name);
+        }
+      }
+    }else{
+      if(decl.init){
+        if(decl.init.kind === "list") throw new RuntimeError("运行时错误：标量变量 '" + sym.name + "' 不能使用初始化列表", decl.loc);
+        const rv = yield* this.evalExpr(decl.init);
+        this.storeValue(addr, t, rv, "初始化:" + sym.name);
+      }else{
+        // 栈帧创建时已整体清零
+      }
+    }
+    if(frame) frame.initialized.add(sym.id);
+  }
+  *evalExpr(node){
+    if(!node) return {value:0, type:{base:"void", ptrDepth:0, arrayLen:0}};
+    switch(node.kind){
+      case "Literal":{
+        yield* this.emitStep(node);
+        this.regs.eax = node.value|0;
+        return {value:node.value|0, type:node.type};
+      }
+      case "StringLiteral":{
+        yield* this.emitStep(node);
+        this.regs.eax = node.addr;
+        this.regs.esi = node.addr;
+        return {value:node.addr, type:node.type, meta:{base:node.addr, size:utf8ByteLength(node.value)+1, count:utf8ByteLength(node.value)+1, elemSize:1, readonly:true}};
+      }
+      case "Identifier":{
+        yield* this.emitStep(node);
+        const sym = node.sym;
+        if(sym.type.arrayLen > 0){
+          const addr = this.addressOfSym(sym);
+          this.regs.eax = addr;
+          this.regs.esi = addr;
+          return {value:addr, type:node.type, meta:{base:addr, size:sym.size, count:sym.type.arrayLen, elemSize:scalarSize(elementType(sym.type))}};
+        }
+        const addr = this.addressOfSym(sym);
+        const value = this.loadValue(addr, node.type, "读取变量:" + sym.name);
+        let meta = null;
+        if(isPointerType(node.type)) meta = this.pointerMetaFor(addr);
+        this.regs.eax = value;
+        return {value, type:node.type, lvalueAddr:addr, meta};
+      }
+      case "ArrayAccess":{
+        const addr = yield* this.evalLValue(node);
+        const value = this.loadValue(addr, node.type, "读取数组元素");
+        this.regs.eax = value;
+        return {value, type:node.type, lvalueAddr:addr};
+      }
+      case "Deref":{
+        const addr = yield* this.evalLValue(node);
+        const value = this.loadValue(addr, node.type, "读取 *ptr");
+        this.regs.eax = value;
+        return {value, type:node.type, lvalueAddr:addr};
+      }
+      case "AddressOf":{
+        yield* this.emitStep(node);
+        const addr = yield* this.evalLValue(node.arg);
+        this.regs.eax = addr;
+        const at = node.arg.type;
+        let meta = this.lastLValueMeta || null;
+        if(!meta){
+          const sz = node.arg.type && node.arg.type.arrayLen > 0 ? storageSize(node.arg.type) : scalarSize(at);
+          meta = {base:addr, size:sz, count:(node.arg.type && node.arg.type.arrayLen > 0) ? node.arg.type.arrayLen : 1, elemSize:scalarSize(at)};
+        }
+        return {value:addr, type:node.type, meta};
+      }
+      case "Unary":{
+        yield* this.emitStep(node);
+        if(node.op === "!"){ const a = yield* this.evalExpr(node.arg); this.regs.eax = a.value ? 0 : 1; return {value:this.regs.eax, type:node.type}; }
+        const a = yield* this.evalExpr(node.arg);
+        let v;
+        switch(node.op){
+          case "+": v = a.value; break;
+          case "-": v = toI32(-a.value); break;
+          case "~": v = toI32(~a.value); break;
+        }
+        this.regs.eax = v;
+        return {value:v, type:node.type};
+      }
+      case "Update":{
+        yield* this.emitStep(node);
+        const addr = yield* this.evalLValue(node.arg);
+        const old = this.loadValue(addr, node.arg.type, "++/-- 读取");
+        const oldMeta = isPointerType(node.arg.type) ? this.pointerMetaFor(addr) : null;
+        let step = 1;
+        if(isPointerType(node.arg.type)) step = scalarSize({base:node.arg.type.base, ptrDepth:node.arg.type.ptrDepth - 1, arrayLen:0});
+        const newV = toI32(old + (node.op === "++" ? step : -step));
+        this.storeValue(addr, node.arg.type, {value:newV, meta:oldMeta}, "++/-- 写回");
+        this.regs.eax = node.prefix ? newV : old;
+        return {value:this.regs.eax, type:node.type, lvalueAddr:addr};
+      }
+      case "Binary":{
+        if(node.op === "&&" || node.op === "||"){
+          yield* this.emitStep(node);
+          const l = yield* this.evalExpr(node.left);
+          this.regs.ebx = l.value;
+          if(node.op === "&&"){
+            if(!l.value){ this.regs.eax = 0; this.regs.ecx = 0; return {value:0, type:node.type}; }
+            const r = yield* this.evalExpr(node.right);
+            this.regs.edx = r.value;
+            this.regs.eax = r.value ? 1 : 0;
+            this.regs.ecx = this.regs.eax;
+            return {value:this.regs.eax, type:node.type};
+          }else{
+            if(l.value){ this.regs.eax = 1; this.regs.ecx = 1; return {value:1, type:node.type}; }
+            const r = yield* this.evalExpr(node.right);
+            this.regs.edx = r.value;
+            this.regs.eax = r.value ? 1 : 0;
+            this.regs.ecx = this.regs.eax;
+            return {value:this.regs.eax, type:node.type};
+          }
+        }
+        yield* this.emitStep(node);
+        const l = yield* this.evalExpr(node.left);
+        this.push4(l.value);
+        const r = yield* this.evalExpr(node.right);
+        const left = this.pop4();
+        this.regs.ebx = left;
+        this.regs.edx = r.value;
+        let v;
+        if(isPointerType(node.type) && (node.op === "+" || node.op === "-")){
+          const pt = isPointerType(node.left.type) ? node.left.type : node.right.type;
+          const et = {base:pt.base, ptrDepth:pt.ptrDepth-1, arrayLen:0};
+          const ptrVal = isPointerType(node.left.type) ? l.value : r.value;
+          const intVal = isPointerType(node.left.type) ? r.value : l.value;
+          const step = Math.imul(intVal, scalarSize(et));
+          v = (node.op === "+") ? toI32(ptrVal + step) : toI32(ptrVal - step);
+        }else{
+          const a = left, b = r.value;
+          switch(node.op){
+            case "+": v = toI32(a + b); break;
+            case "-": v = toI32(a - b); break;
+            case "*": v = Math.imul(a,b); break;
+            case "/":
+              if(b === 0) throw new RuntimeError("运行时错误：除零", node.loc);
+              v = divI32(a,b); break;
+            case "%":
+              if(b === 0) throw new RuntimeError("运行时错误：除零（取模）", node.loc);
+              v = modI32(a,b); break;
+            case "<<": v = toI32(a << (b & 31)); break;
+            case ">>": v = toI32(a >> (b & 31)); break;
+            case "&": v = toI32(a & b); break;
+            case "|": v = toI32(a | b); break;
+            case "^": v = toI32(a ^ b); break;
+            case "==": v = (a === b) ? 1 : 0; break;
+            case "!=": v = (a !== b) ? 1 : 0; break;
+            case "<": v = (a < b) ? 1 : 0; break;
+            case "<=": v = (a <= b) ? 1 : 0; break;
+            case ">": v = (a > b) ? 1 : 0; break;
+            case ">=": v = (a >= b) ? 1 : 0; break;
+          }
+        }
+        if(node.type && node.type.base === "int" && node.type.ptrDepth === 0 && (node.op === "==" || node.op === "!=" || node.op === "<" || node.op === "<=" || node.op === ">" || node.op === ">=")){
+          this.regs.ecx = v;
+        }
+        this.regs.eax = v;
+        const meta = (node.op === "+" || node.op === "-") && isPointerType(node.type) ? (l.meta || r.meta || null) : null;
+        return {value:v, type:node.type, meta};
+      }
+      case "Assign":{
+        yield* this.emitStep(node);
+        const addr = yield* this.evalLValue(node.left);
+        const lt = node.left.type;
+        if(node.op === "="){
+          const rv = yield* this.evalExpr(node.right);
+          const v = this.storeValue(addr, lt, rv, "赋值:" + this.describeLValue(node.left));
+          return {value:v, type:lt, lvalueAddr:addr, meta:rv.meta};
+        }else{
+          const old = this.loadValue(addr, lt, "复合赋值读取");
+          const oldMeta = isPointerType(lt) ? this.pointerMetaFor(addr) : null;
+          const rv = yield* this.evalExpr(node.right);
+          this.regs.ebx = old;
+          this.regs.edx = rv.value;
+          let v;
+          const a=old, b=rv.value;
+          if(isPointerType(lt) && (node.op === "+=" || node.op === "-=")){
+            const et = {base:lt.base, ptrDepth:lt.ptrDepth - 1, arrayLen:0};
+            const delta = Math.imul(b, scalarSize(et));
+            v = node.op === "+=" ? toI32(a + delta) : toI32(a - delta);
+          }else switch(node.op){
+            case "+=": v = toI32(a+b); break;
+            case "-=": v = toI32(a-b); break;
+            case "*=": v = Math.imul(a,b); break;
+            case "/=":
+              if(b === 0) throw new RuntimeError("运行时错误：除零", node.loc);
+              v = divI32(a,b); break;
+            case "%=":
+              if(b === 0) throw new RuntimeError("运行时错误：除零（取模）", node.loc);
+              v = modI32(a,b); break;
+            case "<<=": v = toI32(a << (b&31)); break;
+            case ">>=": v = toI32(a >> (b&31)); break;
+            case "&=": v = toI32(a&b); break;
+            case "|=": v = toI32(a|b); break;
+            case "^=": v = toI32(a^b); break;
+          }
+          this.storeValue(addr, lt, {value:v, meta:oldMeta}, "复合赋值:" + this.describeLValue(node.left));
+          return {value:v, type:lt, lvalueAddr:addr, meta:oldMeta};
+        }
+      }
+      case "Comma":{
+        yield* this.emitStep(node);
+        yield* this.evalExpr(node.left);
+        const rv = yield* this.evalExpr(node.right);
+        return rv;
+      }
+      case "Call":{
+        return yield* this.evalCall(node);
+      }
+    }
+    return {value:0, type:{base:"void", ptrDepth:0, arrayLen:0}};
+  }
+  describeLValue(node){
+    if(node.kind === "Identifier") return node.name;
+    if(node.kind === "ArrayAccess") return "数组元素";
+    if(node.kind === "Deref") return "*ptr";
+    return "左值";
+  }
+  *evalLValue(node){
+    switch(node.kind){
+      case "Identifier":{
+        yield* this.emitStep(node);
+        const sym = node.sym;
+        const addr = this.addressOfSym(sym);
+        this.regs.eax = addr;
+        if(sym.type.arrayLen > 0){
+          this.lastLValueMeta = {base:addr, size:sym.size, count:sym.type.arrayLen, elemSize:scalarSize(elementType(sym.type))};
+        }else{
+          this.lastLValueMeta = {base:addr, size:scalarSize(sym.type), count:1, elemSize:scalarSize(sym.type)};
+        }
+        return addr;
+      }
+      case "ArrayAccess":{
+        yield* this.emitStep(node);
+        const baseRV = yield* this.evalExpr(node.array);
+        const idxRV = yield* this.evalExpr(node.index);
+        const et = node.type;
+        const es = scalarSize(et);
+        if(baseRV.meta && baseRV.meta.count && baseRV.meta.elemSize === es && baseRV.meta.base === toU32(baseRV.value)){
+          const idx = idxRV.value|0;
+          if(idx < 0 || idx >= baseRV.meta.count) throw new RuntimeError("运行时错误：数组越界，下标 " + idx + " 不在 [0," + (baseRV.meta.count-1) + "] 内", node.loc);
+        }
+        const addr = toU32(baseRV.value + Math.imul(idxRV.value, es));
+        this.regs.eax = addr;
+        this.regs.esi = baseRV.value;
+        this.regs.ecx = idxRV.value;
+        this.mem.assertReadable(addr, es, "数组元素取址");
+        this.lastLValueMeta = baseRV.meta || {base:addr, size:es, count:1, elemSize:es};
+        return addr;
+      }
+      case "Deref":{
+        yield* this.emitStep(node);
+        const rv = yield* this.evalExpr(node.arg);
+        const addr = rv.value;
+        const size = scalarSize(node.type);
+        this.mem.assertReadable(addr, size, "*ptr 取址");
+        this.regs.eax = addr;
+        this.regs.esi = addr;
+        this.lastLValueMeta = rv.meta || {base:addr, size, count:1, elemSize:size};
+        return addr;
+      }
+    }
+    throw new RuntimeError("运行时错误：表达式不是可修改的左值", node.loc);
+  }
+  *evalCall(node){
+    yield* this.emitStep(node);
+    const fn = node.func;
+    if(fn.builtin){
+      return yield* this.callPrintf(node);
+    }
+    const argRVs = [];
+    for(const a of node.args){ argRVs.push(yield* this.evalExpr(a)); }
+    const result = yield* this.callFunction(fn, argRVs, node);
+    // cdecl：调用方清理压栈的参数
+    this.regs.esp = (this.regs.esp + argRVs.length * 4) >>> 0;
+    this.regs.eip = (node.addr + 8) >>> 0;
+    return result;
+  }
+  *callFunction(fn, argRVs, callSite){
+    const retAddr = callSite ? ((callSite.addr + 8) >>> 0) : 0;
+    // 参数从右到左压栈，再压返回地址与旧 EBP
+    for(let i=argRVs.length-1;i>=0;i--){
+      const p = fn.params[i];
+      const rv = argRVs[i];
+      let v = rv.value;
+      if(p.type.base === "char" && p.type.ptrDepth === 0) v = signExtend8(v & 0xff);
+      this.push4(v);
+    }
+    this.push4(retAddr);
+    this.push4(this.regs.ebp);
+    this.regs.ebp = this.regs.esp;
+    this.regs.esp = (this.regs.esp - fn.frameSize) >>> 0;
+    if(this.regs.esp < STACK_LIMIT) throw new RuntimeError("运行时错误：栈溢出", this.currentLoc);
+    // 清零局部变量区（低层写入，避免污染“最近读写”高亮）
+    if(fn.frameSize > 0) this.mem.writeBytesRaw(this.regs.esp, new Uint8Array(fn.frameSize));
+    const frameId = ++this.frameCounter;
+    const frame = {id:frameId, fn, ebp:this.regs.ebp, returnAddr:retAddr, initialized:new Set()};
+    this.frames.push(frame);
+    for(let i=0;i<fn.paramSyms.length;i++){
+      const p = fn.paramSyms[i];
+      const a = (this.regs.ebp + p.offset) >>> 0;
+      this.mem.addAllocation({base:a, size:p.size, name:p.name, kind:"param", frameId, readonly:false});
+      frame.initialized.add(p.id);
+      if(isPointerType(p.type) && argRVs[i] && argRVs[i].meta){
+        this.mem.pointerMeta.set(a, argRVs[i].meta);
+      }
+    }
+    for(const s of fn.localSyms){
+      const a = (this.regs.ebp + s.offset) >>> 0;
+      this.mem.addAllocation({base:a, size:s.size, name:s.name, kind:"local", frameId, readonly:false});
+    }
+    this.regs.eip = fn.addr;
+    yield* this.emitStep(fn);
+    let retVal = 0;
+    try{
+      yield* this.execStatement(fn.body);
+    }catch(e){
+      if(e instanceof ReturnSignal) retVal = e.value;
+      else throw e;
+    }
+    // 函数尾声：ESP 回到 EBP，恢复旧 EBP，弹出返回地址
+    this.regs.esp = this.regs.ebp;
+    this.regs.ebp = this.mem.readU32(this.regs.esp, "恢复旧 EBP");
+    this.regs.esp = (this.regs.esp + 4) >>> 0;
+    this.regs.eip = this.mem.readU32(this.regs.esp, "弹出返回地址");
+    this.regs.esp = (this.regs.esp + 4) >>> 0;
+    if(fn.returnType.base === "char" && fn.returnType.ptrDepth === 0) retVal = signExtend8(retVal & 0xff);
+    this.regs.eax = retVal|0;
+    this.mem.removeAllocations(frameId);
+    this.frames.pop();
+    return {value:retVal|0, type:fn.returnType};
+  }
+  *callPrintf(node){
+    const fmtRV = yield* this.evalExpr(node.args[0]);
+    const bytes = this.mem.readCString(fmtRV.value, 4096, "printf 格式字符串");
+    const fmt = utf8Decode(bytes);
+    let out = "";
+    let argi = 1;
+    let chars = 0;
+    for(let i=0;i<fmt.length;i++){
+      const ch = fmt[i];
+      if(ch !== "%"){ out += ch; chars++; continue; }
+      if(fmt[i+1] === "%"){ out += "%"; chars++; i++; continue; }
+      const spec = fmt[i+1];
+      if(spec === undefined) break;
+      if(argi >= node.args.length) throw new RuntimeError("运行时错误：printf 格式串中的 %" + spec + " 缺少对应参数", node.loc);
+      const rv = yield* this.evalExpr(node.args[argi++]);
+      if(spec === "d"){
+        const s = String(rv.value|0); out += s; chars += s.length;
+      }else if(spec === "x"){
+        const s = toU32(rv.value).toString(16); out += s; chars += s.length;
+      }else if(spec === "c"){
+        out += String.fromCharCode(rv.value & 0xff); chars++;
+      }else if(spec === "s"){
+        const sb = this.mem.readCString(rv.value, 4096, "printf %s");
+        const s = utf8Decode(sb); out += s; chars += s.length;
+      }else{
+        throw new RuntimeError("运行时错误：printf 不支持的格式说明符 '%" + spec + "'（本子集支持 %d、%x、%c、%s、%%）", node.loc);
+      }
+      i++;
+    }
+    if(this.onOutput) this.onOutput(out);
+    this.regs.eax = chars|0;
+    this.regs.ecx = chars|0;
+    return {value:chars|0, type:node.type};
+  }
+}
+
+/* =====================================================================
+ * 6. UI —— 深色调试器界面
+ * ===================================================================*/
+const EXAMPLES = {
+  loop:{
+    name:"循环与整数运算",
+    code:`// 示例 1：循环与整数运算
+int g_count = 0;
+
+int main(void) {
+    int n = 10;
+    int sum = 0;
+    int prod = 1;
+    int i;
+    for (i = 1; i <= n; i++) {
+        sum = sum + i;
+        prod = prod * i;
+        if (i == 5) {
+            g_count = g_count + 1;
+        }
+    }
+    printf("sum(1..%d) = %d\\n", n, sum);
+    printf("product(1..%d) = %d\\n", n, prod);
+    printf("g_count = %d, g_count(hex) = %x\\n", g_count, g_count);
+    return 0;
+}
+`
+  },
+  recursion:{
+    name:"函数调用与递归",
+    code:`// 示例 2：函数调用与递归
+int fib(int n) {
+    if (n < 2) {
+        return n;
+    }
+    return fib(n - 1) + fib(n - 2);
+}
+
+int main(void) {
+    int i;
+    for (i = 0; i < 10; i++) {
+        printf("fib(%d) = %d\\n", i, fib(i));
+    }
+    return 0;
+}
+`
+  },
+  array:{
+    name:"数组与指针",
+    code:`// 示例 3：数组与指针（观察小端内存与栈帧）
+int arr[5] = {3, 1, 4, 1, 5};
+char msg[] = "hello";
+
+int main(void) {
+    int i;
+    int sum = 0;
+    int *p;
+    p = &arr[0];
+    for (i = 0; i < 5; i++) {
+        sum = sum + *p;
+        p = p + 1;
+    }
+    printf("array sum = %d\\n", sum);
+    printf("arr[0] = %d, arr[4] = %d\\n", arr[0], arr[4]);
+    printf("msg = %s, first = %c\\n", msg, msg[0]);
+    return 0;
+}
+`
+  }
+};
+
+class App{
+  constructor(){
+    this.editor = document.getElementById("code-editor");
+    this.output = document.getElementById("output");
+    this.errorArea = document.getElementById("error-area");
+    this.errorEmpty = document.getElementById("error-empty");
+    this.regsEl = document.getElementById("regs");
+    this.callstackEl = document.getElementById("callstack");
+    this.memAddrInput = document.getElementById("mem-addr");
+    this.memTable = document.getElementById("mem-table");
+    this.memInfo = document.getElementById("mem-info");
+    this.statusEl = document.getElementById("status");
+    this.stepsEl = document.getElementById("steps");
+    this.highlightEl = document.getElementById("line-highlight");
+    this.editorShell = this.highlightEl.parentElement;
+    this.program = null;
+    this.runtime = null;
+    this.compiledSource = null;
+    this.running = false;
+    this.pauseRequested = false;
+    this.finished = false;
+    this.errorLine = null;
+    this.currentLine = null;
+    this.lastShownLine = null;
+    this.lastRegs = null;
+    this.memViewAddr = GLOBAL_BASE;
+    this.bind();
+    this.loadExample("loop");
+    this.reset();
+  }
+  bind(){
+    document.getElementById("btn-run").addEventListener("click", ()=>this.run());
+    document.getElementById("btn-pause").addEventListener("click", ()=>this.pause());
+    document.getElementById("btn-step").addEventListener("click", ()=>this.stepOnce());
+    document.getElementById("btn-reset").addEventListener("click", ()=>this.reset());
+    document.querySelectorAll("[data-example]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{ this.loadExample(btn.dataset.example); this.reset(); });
+    });
+    document.getElementById("btn-mem-view").addEventListener("click", ()=>{
+      const v = parseAddressText(this.memAddrInput.value);
+      if(v === null){ this.showError({message:"地址格式无效：请输入十进制或 0x 十六进制 32 位地址"}); this.setStatus("地址格式错误","error"); return; }
+      this.memViewAddr = v;
+      this.renderMemory();
+    });
+    document.getElementById("btn-mem-esp").addEventListener("click", ()=>{
+      if(this.runtime) this.memViewAddr = this.runtime.regs.esp;
+      this.memAddrInput.value = hex32(this.memViewAddr);
+      this.renderMemory();
+    });
+    document.getElementById("btn-mem-ebp").addEventListener("click", ()=>{
+      if(this.runtime) this.memViewAddr = this.runtime.regs.ebp;
+      this.memAddrInput.value = hex32(this.memViewAddr);
+      this.renderMemory();
+    });
+    this.editor.addEventListener("input", ()=>{
+      this.compiledSource = null;
+      this.program = null;
+      this.runtime = null;
+      this.finished = false;
+      this.currentLine = null;
+      this.lastShownLine = null;
+      this.errorLine = null;
+      this.lastRegs = null;
+      this.clearError();
+      this.hideHighlight();
+      this.setStatus("源代码已修改，尚未编译", "");
+      this.callstackEl.innerHTML = '<div class="muted">尚未运行</div>';
+      this.memInfo.innerHTML = "最近读写：—";
+      this.memTable.innerHTML = '<div class="muted">尚未运行</div>';
+      this.renderRegisters();
+    });
+    this.editor.addEventListener("scroll", ()=>this.positionHighlight());
+  }
+  loadExample(key){
+    const ex = EXAMPLES[key];
+    if(!ex) return;
+    this.editor.value = ex.code;
+    this.editor.dispatchEvent(new Event("input"));
+  }
+  currentSource(){ return this.editor.value; }
+  setStatus(text, cls){
+    this.statusEl.textContent = text;
+    this.statusEl.className = cls || "";
+  }
+  updateSteps(){
+    const rt = this.runtime;
+    this.stepsEl.textContent = "步数 " + (rt ? rt.stepCount : 0) + " / " + DEFAULT_MAX_STEPS;
+  }
+  compileOrFail(){
+    try{
+      this.program = compileProgram(this.currentSource());
+      this.compiledSource = this.currentSource();
+      this.runtime = new Runtime(this.program);
+      this.runtime.onOutput = (s)=>this.appendOutput(s);
+      this.finished = false;
+      this.output.textContent = "";
+      this.clearError();
+      this.hideHighlight();
+      this.lastRegs = null;
+      this.memViewAddr = GLOBAL_BASE;
+      this.memAddrInput.value = hex32(this.memViewAddr);
+      this.setStatus("编译成功，机器已复位", "");
+      this.updateSteps();
+      this.renderAll();
+      return true;
+    }catch(e){
+      this.showError(e);
+      this.setStatus("编译失败", "error");
+      return false;
+    }
+  }
+  reset(){
+    this.pauseRequested = true;
+    this.running = false;
+    if(this.compileOrFail()) this.setStatus("已重置，可运行或单步", "");
+  }
+  run(){
+    if(this.running) return;
+    if(!this.ensureReady(true)) return;
+    this.pauseRequested = false;
+    this.running = true;
+    this.finished = false;
+    this.clearError();
+    this.hideHighlight();
+    this.setStatus("运行中…", "");
+    this.setButtons();
+    this.pump();
+  }
+  ensureReady(forRun){
+    if(!this.program || this.compiledSource !== this.currentSource()){
+      if(!this.compileOrFail()) return false;
+    }
+    if(!this.runtime) this.runtime = new Runtime(this.program);
+    if(this.finished && this.runtime){
+      this.runtime = new Runtime(this.program);
+      this.runtime.onOutput = (s)=>this.appendOutput(s);
+      this.finished = false;
+    }
+    if(!this.runtime.gen) this.runtime.startGenerator();
+    return true;
+  }
+  pump(){
+    if(!this.runtime || !this.runtime.gen) return;
+    let n = 0;
+    const t0 = performance.now();
+    for(;;){
+      if(this.pauseRequested){
+        this.running = false;
+        this.setStatus("已暂停（可在当前状态继续单步或运行）", "");
+        this.setButtons();
+        this.renderAll();
+        return;
+      }
+      let r;
+      try{
+        r = this.runtime.gen.next();
+      }catch(e){
+        this.handleRuntimeError(e);
+        return;
+      }
+      n++;
+      if(r.done){
+        this.finish(r.value);
+        return;
+      }
+      if(n >= RUN_CHUNK_STEPS || (performance.now() - t0) > 30){
+        this.renderAll();
+        setTimeout(()=>this.pump(), 0);
+        return;
+      }
+    }
+  }
+  finish(val){
+    this.running = false;
+    this.finished = true;
+    this.pauseRequested = false;
+    if(this.runtime) this.runtime.gen = null;
+    this.runtime.regs.eip = 0;
+    this.currentLine = null;
+    this.hideHighlight();
+    this.setStatus("程序结束，main 返回值 = " + (val|0), "done");
+    this.setButtons();
+    this.renderAll();
+  }
+  stepOnce(){
+    if(this.running){
+      this.pauseRequested = true;
+      this.setStatus("已请求暂停；请稍后再点单步", "");
+      return;
+    }
+    if(!this.ensureReady(false)) return;
+    if(this.finished){
+      this.runtime = new Runtime(this.program);
+      this.runtime.onOutput = (s)=>this.appendOutput(s);
+      this.finished = false;
+      this.runtime.startGenerator();
+    }
+    const boundaryKinds = new Set(["Function","VarDecl","ExprStmt","If","While","For","Return","Break","Continue","Empty"]);
+    let r;
+    try{
+      for(let i=0;i<50000;i++){
+        r = this.runtime.gen.next();
+        if(r.done){ this.finish(r.value); return; }
+        const n = this.runtime.currentNode;
+        if(n && boundaryKinds.has(n.kind)) break;
+      }
+    }catch(e){
+      this.handleRuntimeError(e);
+      return;
+    }
+    this.pauseRequested = false;
+    this.setStatus("单步暂停（下一步：" + (this.runtime.currentLoc ? "第 " + this.runtime.currentLoc.line + " 行" : "入口") + "）", "");
+    this.setButtons();
+    this.renderAll();
+  }
+  pause(){
+    if(!this.running) return;
+    this.pauseRequested = true;
+    this.setStatus("正在暂停…", "");
+  }
+  handleRuntimeError(e){
+    this.running = false;
+    this.pauseRequested = false;
+    if(this.runtime) this.runtime.gen = null;
+    this.finished = true;
+    const loc = (e && e.loc) || (this.runtime && this.runtime.currentLoc) || null;
+    const msg = e && e.message ? e.message : String(e);
+    this.showError({message:msg, loc});
+    if(loc){ this.currentLine = loc.line; this.showHighlight(loc.line, true); }
+    this.setStatus("运行时错误", "error");
+    this.setButtons();
+    this.renderAll();
+  }
+  appendOutput(s){
+    if(this.output.textContent.length + s.length > MAX_OUTPUT_CHARS){
+      throw new RuntimeError("运行时错误：控制台输出超过 " + MAX_OUTPUT_CHARS + " 字符上限（疑似大量 printf 输出）", null);
+    }
+    this.output.textContent += s;
+    this.output.scrollTop = this.output.scrollHeight;
+  }
+  showError(e){
+    this.errorEmpty.style.display = "none";
+    this.errorArea.style.display = "block";
+    let msg = e && e.message ? e.message : String(e);
+    if(e && e.loc) msg += "\n位置：" + locText(e.loc);
+    this.errorArea.textContent = msg;
+    if(e && e.loc){ this.errorLine = e.loc.line; this.showHighlight(e.loc.line, true); }
+  }
+  clearError(){
+    this.errorArea.style.display = "none";
+    this.errorArea.textContent = "";
+    this.errorEmpty.style.display = "block";
+    this.errorLine = null;
+  }
+  setButtons(){
+    document.getElementById("btn-run").disabled = this.running;
+    document.getElementById("btn-pause").disabled = !this.running;
+    document.getElementById("btn-step").disabled = this.running;
+  }
+  renderAll(){
+    if(this.runtime && this.runtime.currentLoc){
+      this.currentLine = this.runtime.currentLoc.line;
+    }else if(this.finished){
+      this.currentLine = null;
+    }
+    if(this.currentLine !== this.lastShownLine){
+      this.lastShownLine = this.currentLine;
+      this.ensureLineVisible(this.currentLine);
+    }
+    this.renderRegisters();
+    this.renderCallstack();
+    this.renderMemory();
+    this.updateSteps();
+    this.positionHighlight();
+  }
+  ensureLineVisible(line){
+    if(!line || !this.editor) return;
+    const cs = getComputedStyle(this.editor);
+    const lh = parseFloat(cs.lineHeight) || 21;
+    const pt = parseFloat(cs.paddingTop) || 0;
+    const top = pt + (line - 1) * lh;
+    const viewTop = this.editor.scrollTop;
+    const viewBottom = viewTop + this.editor.clientHeight - lh - pt;
+    if(top < viewTop + lh || top > viewBottom){
+      this.editor.scrollTop = Math.max(0, top - this.editor.clientHeight / 2);
+    }
+  }
+  renderRegisters(){
+    const r = this.runtime ? this.runtime.regs : {eax:0,ebx:0,ecx:0,edx:0,esi:0,edi:0,esp:STACK_TOP,ebp:0,eip:0};
+    const names = ["EAX","EBX","ECX","EDX","ESI","EDI","ESP","EBP","EIP"];
+    let html = "";
+    for(const nm of names){
+      const key = nm.toLowerCase();
+      const val = toU32(r[key]);
+      const changed = this.lastRegs && this.lastRegs[key] !== val;
+      const title = changed ? (hex32(this.lastRegs[key]) + " → " + hex32(val)) : "";
+      html += '<div class="reg' + (changed ? " changed" : "") + ' title="' + escapeHtml(title) + '">' +
+              '<div class="name">' + nm + '</div><div class="val">' + hex32(val) + '</div></div>';
+    }
+    this.regsEl.innerHTML = html;
+    const snap = {};
+    for(const nm of names) snap[nm.toLowerCase()] = toU32(r[nm.toLowerCase()]);
+    this.lastRegs = snap;
+  }
+  renderCallstack(){
+    if(!this.runtime){
+      this.callstackEl.innerHTML = '<div class="muted">尚未运行</div>';
+      return;
+    }
+    const rt = this.runtime;
+    let html = "";
+    const allFrames = rt.frames.slice().reverse();
+    const frames = allFrames.slice(0, 40);
+    if(allFrames.length > frames.length){
+      html += '<div class="muted">共 ' + allFrames.length + ' 个栈帧，仅显示最近 ' + frames.length + ' 个。</div>';
+    }
+    if(frames.length === 0 && rt.regs.ebp === 0){
+      html += '<div class="muted">当前不在任何函数栈帧内' + (this.finished ? "（程序已结束）" : "") + '</div>';
+    }
+    frames.forEach((fr, fi)=>{
+      const active = fi === 0;
+      html += '<div class="frame' + (active ? " active" : "") + '">';
+      html += '<h3>' + escapeHtml(fr.fn.name) + '() <span>EBP=' + hex32(fr.ebp) + ' · 返回地址=' + hex32(fr.returnAddr) + '</span></h3>';
+      html += '<table class="vars"><tr><th>变量</th><th>类型</th><th>地址</th><th>值</th></tr>';
+      const syms = fr.fn.paramSyms.concat(fr.fn.localSyms);
+      for(const s of syms){
+        const addr = (fr.ebp + s.offset) >>> 0;
+        const init = fr.initialized.has(s.id);
+        let valHtml;
+        if(!init){
+          valHtml = '<span class="muted">未初始化</span>';
+        }else{
+          valHtml = this.formatVarValue(addr, s.type);
+        }
+        html += '<tr><td>' + escapeHtml(s.name) + '</td><td>' + escapeHtml(typeName(s.type)) + '</td><td class="addr">' + hex32(addr) + '</td><td>' + valHtml + '</td></tr>';
+      }
+      html += '</table></div>';
+    });
+    html += '<div style="margin-top:8px"><b class="muted">全局变量</b></div><table class="vars"><tr><th>变量</th><th>类型</th><th>地址</th><th>值</th></tr>';
+    for(const s of this.program.globalSyms){
+      html += '<tr><td>' + escapeHtml(s.name) + '</td><td>' + escapeHtml(typeName(s.type)) + '</td><td class="addr">' + hex32(s.addr) + '</td><td>' + this.formatVarValue(s.addr, s.type) + '</td></tr>';
+    }
+    html += '</table>';
+    this.callstackEl.innerHTML = html;
+  }
+  formatVarValue(addr, type){
+    if(type.arrayLen > 0){
+      const et = elementType(type);
+      const es = scalarSize(et);
+      const maxShow = Math.min(type.arrayLen, 12);
+      const vals = [];
+      for(let i=0;i<maxShow;i++){
+        if(type.base === "char" && type.ptrDepth === 0) vals.push(this.runtime.mem.peekByte((addr+i*es)>>>0));
+        else vals.push(this.runtime.mem.peekByte((addr+i*es)>>>0) | (this.runtime.mem.peekByte((addr+i*es+1)>>>0)<<8) | (this.runtime.mem.peekByte((addr+i*es+2)>>>0)<<16) | (this.runtime.mem.peekByte((addr+i*es+3)>>>0)<<24));
+      }
+      let suffix = type.arrayLen > maxShow ? "…" : "";
+      return '<span class="num">[' + vals.map(v=>v).join(", ") + suffix + ']</span> <span class="addr">@' + hex32(addr) + '</span>';
+    }
+    if(type.base === "char" && type.ptrDepth === 0){
+      const b = this.runtime.mem.peekByte(addr);
+      const v = signExtend8(b);
+      return '<span class="num">' + v + '</span> <span class="muted">(0x' + (b&0xff).toString(16).padStart(2,"0") + ", '" + escapeHtml(String.fromCharCode(b>=32&&b<127?b:46)) + "')</span>";
+    }
+    if(isPointerType(type) || (type.base === "int" && type.ptrDepth === 0)){
+      const b0=this.runtime.mem.peekByte(addr), b1=this.runtime.mem.peekByte((addr+1)>>>0), b2=this.runtime.mem.peekByte((addr+2)>>>0), b3=this.runtime.mem.peekByte((addr+3)>>>0);
+      const v = toI32(((b0 | (b1<<8) | (b2<<16) | (b3<<24)) >>> 0));
+      if(isPointerType(type)) return '<span class="ptr">' + hex32(v) + '</span>';
+      return '<span class="num">' + v + '</span> <span class="muted">(' + hex32(v) + ')</span>';
+    }
+    return '<span class="num">0</span>';
+  }
+  renderMemory(){
+    if(!this.runtime){
+      this.memTable.innerHTML = '<div class="muted">尚未运行</div>';
+      return;
+    }
+    const mem = this.runtime.mem;
+    const start = alignDown(this.memViewAddr, 16);
+    const bytesPerRow = 16, rows = 12;
+    let html = "";
+    for(let r=0;r<rows;r++){
+      const rowAddr = (start + r*bytesPerRow) >>> 0;
+      html += '<div class="mem-row"><span class="mem-off">' + hex32(rowAddr) + '</span>';
+      let ascii = "";
+      for(let c=0;c<bytesPerRow;c++){
+        const a = (rowAddr + c) >>> 0;
+        const b = mem.peekByte(a);
+        let cls = "mem-byte";
+        if(mem.lastWrite && a >= mem.lastWrite.addr && a < mem.lastWrite.addr + mem.lastWrite.size) cls += " write";
+        else if(mem.lastRead && a >= mem.lastRead.addr && a < mem.lastRead.addr + mem.lastRead.size) cls += " read";
+        if(b === 0) cls += " zero";
+        html += '<span class="' + cls + '">' + b.toString(16).padStart(2,"0") + '</span>';
+        ascii += (b>=32 && b<127) ? String.fromCharCode(b) : ".";
+      }
+      html += '<span class="mem-ascii">|' + escapeHtml(ascii) + '|</span></div>';
+    }
+    this.memTable.innerHTML = html;
+    this.memAddrInput.value = hex32(this.memViewAddr);
+    const r = mem.lastRead ? ('读取 ' + hex32(mem.lastRead.addr) + ' +' + mem.lastRead.size + 'B (' + escapeHtml(mem.lastRead.label||"") + ')') : "—";
+    const w = mem.lastWrite ? ('写入 ' + hex32(mem.lastWrite.addr) + ' +' + mem.lastWrite.size + 'B (' + escapeHtml(mem.lastWrite.label||"") + ')') : "—";
+    this.memInfo.innerHTML = '最近读写：<span class="r">' + r + '</span>　<span class="w">' + w + '</span>';
+  }
+  positionHighlight(){
+    const line = this.currentLine;
+    if(!line){
+      this.highlightEl.style.display = "none";
+      return;
+    }
+    const cs = getComputedStyle(this.editor);
+    const lh = parseFloat(cs.lineHeight) || 21;
+    const pt = parseFloat(cs.paddingTop) || 0;
+    const top = pt + (line - 1) * lh - this.editor.scrollTop;
+    this.highlightEl.style.display = "block";
+    this.highlightEl.style.top = Math.max(0, top) + "px";
+    this.highlightEl.style.height = lh + "px";
+    this.highlightEl.className = "line-highlight" + (this.errorLine === line ? " error" : "");
+  }
+  showHighlight(line, isError){
+    this.currentLine = line;
+    if(isError) this.errorLine = line;
+    this.positionHighlight();
+  }
+  hideHighlight(){
+    this.currentLine = null;
+    this.errorLine = null;
+    this.highlightEl.style.display = "none";
+  }
+}
+
+const app = new App();
+</script>
+</body>
+</html>
